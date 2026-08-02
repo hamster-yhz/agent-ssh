@@ -21,7 +21,16 @@ SSH Space 是一个轻量的 Windows 桌面 SSH 控制台。用户和本地 Agen
 - `SSH-Space-2.0.0-Portable.zip`：解压即用的便携版，适合 Agent 工作区或移动存储。
 - `SHA256SUMS.txt`：用于校验下载文件完整性。
 
-安装包和便携版都包含桌面程序、命令行脚本、Web 控制台和内置 OpenSSH，不包含开发者本机的服务器配置、密码、密钥、导出包、备份或运行数据。建立远程仓库后，可把这三个文件上传到 GitHub Releases，其他用户直接从 Releases 页面下载。
+安装包和便携版都包含桌面程序、命令行脚本、Web 控制台和内置 OpenSSH，不包含开发者本机的服务器配置、密码、密钥、导出包、备份或运行数据。
+
+仓库包含 GitHub Actions 发布流水线：推送到 `main` 会自动构建并保存 14 天的工作流产物；推送 `v2.0.0` 形式的标签会自动创建 GitHub Release，并上传安装包、便携版和校验文件，不需要手工上传。
+
+```powershell
+git tag v2.0.0
+git push origin main --tags
+```
+
+也可以在 GitHub 的 Actions 页面手动运行 `Build and release`。手动运行会生成可下载的工作流产物，但只有版本标签会创建正式 Release。
 
 需要排查桌面窗口时，可以在 PowerShell 中以前台模式运行内部服务：
 

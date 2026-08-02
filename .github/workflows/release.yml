@@ -1,0 +1,170 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: false
+        default: "2.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Resolve build version
+        shell: pwsh
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:MANUAL_VERSION)) {
+            $version = $env:MANUAL_VERSION
+          } else {
+            $version = "2.0.$env:GITHUB_RUN_NUMBER"
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid release version: $version"
+          }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: ssh-space-${{ runner.os }}-${{ hashFiles('scripts/build-desktop.ps1', 'scripts/get-openssh.ps1') }}
+
+      - name: Install installer compiler
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Validate source syntax
+        shell: pwsh
+        run: |
+          $files = @(
+            '.\ssh.ps1',
+            '.\app\server.ps1',
+            '.\scripts\build-desktop.ps1',
+            '.\scripts\get-openssh.ps1',
+            '.\scripts\build-release.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) {
+              throw "$file has PowerShell syntax errors: $($errors.Message -join '; ')"
+            }
+          }
+          node --check .\app\web\app.js
+
+      - name: Build release packages
+        shell: pwsh
+        run: .\scripts\build-release.ps1 -Version $env:APP_VERSION -RebuildDesktop
+
+      - name: Verify package isolation and installation
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $portable = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Portable.zip"
+          $archive = [IO.Compression.ZipFile]::OpenRead($portable)
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+            foreach ($required in @(
+              'SSH Space.exe',
+              'runtime/openssh/ssh.exe',
+              'runtime/openssh/LICENSE.txt'
+            )) {
+              if ($entries -notcontains $required) { throw "Portable package is missing $required" }
+            }
+            if ($entries | Where-Object { $_ -match 'servers\.local\.json' }) {
+              throw 'Portable package contains a local server configuration.'
+            }
+            if ($entries | Where-Object { $_ -match '^(keys|exports|backups)/(?!.gitkeep$).+' }) {
+              throw 'Portable package contains private runtime data.'
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+          $installRoot = Join-Path $env:RUNNER_TEMP 'ssh-space-install-test'
+          $setup = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
+          $install = Start-Process -FilePath $setup -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', "/DIR=$installRoot"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
+          $installedSsh = Join-Path $installRoot 'runtime\openssh\ssh.exe'
+          if (-not (Test-Path -LiteralPath $installedSsh -PathType Leaf)) {
+            throw 'Installed OpenSSH runtime was not found.'
+          }
+          $sshVersion = & $installedSsh -V 2>&1 | Out-String
+          if ($sshVersion -notmatch 'OpenSSH_for_Windows') {
+            throw "Installed OpenSSH verification failed: $sshVersion"
+          }
+          if (Test-Path -LiteralPath (Join-Path $installRoot 'config\servers.local.json')) {
+            throw 'Installer unexpectedly created a local server configuration.'
+          }
+
+          $uninstaller = Join-Path $installRoot 'unins000.exe'
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          ) -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)" }
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SSH-Space-${{ env.APP_VERSION }}-Windows
+          path: |
+            dist/SSH-Space-${{ env.APP_VERSION }}-Setup.exe
+            dist/SSH-Space-${{ env.APP_VERSION }}-Portable.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $files = @(
+            ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe",
+            ".\dist\SSH-Space-$env:APP_VERSION-Portable.zip",
+            '.\dist\SHA256SUMS.txt'
+          )
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $releaseUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$([Uri]::EscapeDataString($tag))"
+          try {
+            [void](Invoke-RestMethod -Uri $releaseUrl -Headers $headers)
+            $releaseExists = $true
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+            $releaseExists = $false
+          }
+          if ($releaseExists) {
+            gh release upload $tag @files --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag @files --verify-tag --generate-notes `
+              --title "SSH Space $env:APP_VERSION" --repo $env:GITHUB_REPOSITORY
+          }
