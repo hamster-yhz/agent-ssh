@@ -1,0 +1,17 @@
+{
+  "defaults": {
+    "port": 22,
+    "connectTimeoutSeconds": 10,
+    "serverAliveIntervalSeconds": 30,
+    "strictHostKeyChecking": "accept-new"
+  },
+  "servers": {
+    "example": {
+      "host": "CHANGE_ME",
+      "user": "CHANGE_ME",
+      "port": 22,
+      "identityFile": "",
+      "password": ""
+    }
+  }
+}

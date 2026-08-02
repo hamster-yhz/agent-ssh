@@ -1,0 +1,89 @@
+[CmdletBinding()]
+param(
+    [string]$OutputPath
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$packageVersion = '1.0.2592.51'
+$root = Split-Path -Parent $PSScriptRoot
+$source = Join-Path $root 'src\desktop\SshSpace.Desktop.cs'
+$manifest = Join-Path $root 'src\desktop\app.manifest'
+$icon = Join-Path $root 'src\desktop\SshSpace.ico'
+$buildRoot = Join-Path $root 'build'
+$cache = Join-Path $buildRoot 'cache\webview2'
+$output = if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    Join-Path $root 'SSH Space.exe'
+} else {
+    [IO.Path]::GetFullPath((Join-Path $root $OutputPath))
+}
+$temporary = Join-Path $buildRoot 'SSH Space.build.exe'
+$core = Join-Path $cache 'Microsoft.Web.WebView2.Core.dll'
+$winForms = Join-Path $cache 'Microsoft.Web.WebView2.WinForms.dll'
+$loaderX64 = Join-Path $cache 'WebView2Loader.x64.dll'
+$loaderX86 = Join-Path $cache 'WebView2Loader.x86.dll'
+
+foreach ($requiredSource in @($source, $manifest, $icon)) {
+    if (-not (Test-Path -LiteralPath $requiredSource -PathType Leaf)) {
+        throw "Desktop build input was not found: $requiredSource"
+    }
+}
+
+if (-not (Test-Path -LiteralPath $core -PathType Leaf)) {
+    New-Item -ItemType Directory -Path $cache -Force | Out-Null
+    $package = Join-Path $cache "Microsoft.Web.WebView2.$packageVersion.nupkg"
+    $download = "$package.download"
+    & curl.exe -L --fail --retry 3 --connect-timeout 15 `
+        -o $download "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$packageVersion"
+    if ($LASTEXITCODE -ne 0) { throw 'Could not download the WebView2 build package.' }
+    Move-Item -LiteralPath $download -Destination $package -Force
+    $zip = Join-Path $cache "Microsoft.Web.WebView2.$packageVersion.zip"
+    $expanded = Join-Path $cache 'package'
+    Copy-Item -LiteralPath $package -Destination $zip -Force
+    Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
+    Copy-Item -LiteralPath (Join-Path $expanded 'lib\net462\Microsoft.Web.WebView2.Core.dll') -Destination $core
+    Copy-Item -LiteralPath (Join-Path $expanded 'lib\net462\Microsoft.Web.WebView2.WinForms.dll') -Destination $winForms
+    Copy-Item -LiteralPath (Join-Path $expanded 'build\native\x64\WebView2Loader.dll') -Destination $loaderX64
+    Copy-Item -LiteralPath (Join-Path $expanded 'build\native\x86\WebView2Loader.dll') -Destination $loaderX86
+}
+
+$dependencies = @($core, $winForms, $loaderX64, $loaderX86)
+foreach ($dependency in $dependencies) {
+    if (-not (Test-Path -LiteralPath $dependency -PathType Leaf)) {
+        throw "WebView2 build dependency is missing: $dependency"
+    }
+}
+
+New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+try {
+    if (Test-Path -LiteralPath $temporary) {
+        Remove-Item -LiteralPath $temporary -Force
+    }
+    $resourceOptions = @(
+        "/resource:`"$core`",SshSpace.Resources.WebView2.Core",
+        "/resource:`"$winForms`",SshSpace.Resources.WebView2.WinForms",
+        "/resource:`"$loaderX64`",SshSpace.Resources.WebView2.Loader.x64",
+        "/resource:`"$loaderX86`",SshSpace.Resources.WebView2.Loader.x86"
+    )
+    $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
+    $parameters = New-Object CodeDom.Compiler.CompilerParameters
+    $parameters.GenerateExecutable = $true
+    $parameters.GenerateInMemory = $false
+    $parameters.OutputAssembly = $temporary
+    $parameters.CompilerOptions = "/target:winexe /optimize+ /win32icon:`"$icon`" /win32manifest:`"$manifest`" " + ($resourceOptions -join ' ')
+    @('System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll', $core, $winForms) |
+        ForEach-Object { [void]$parameters.ReferencedAssemblies.Add($_) }
+    $result = $provider.CompileAssemblyFromFile($parameters, $source)
+    $provider.Dispose()
+    if ($result.Errors.HasErrors) {
+        $messages = @($result.Errors | ForEach-Object { "$($_.FileName):$($_.Line): $($_.ErrorText)" })
+        throw "Desktop application compilation failed:`n$($messages -join "`n")"
+    }
+    Move-Item -LiteralPath $temporary -Destination $output -Force
+    Write-Host "Built desktop app: $output" -ForegroundColor Green
+} finally {
+    if (Test-Path -LiteralPath $temporary) {
+        Remove-Item -LiteralPath $temporary -Force
+    }
+}

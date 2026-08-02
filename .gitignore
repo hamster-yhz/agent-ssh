@@ -1,0 +1,21 @@
+# Local server config may contain passwords.
+/config/servers.local.json
+
+# Private keys, known_hosts, and generated helpers stay local.
+/keys/*
+!/keys/.gitkeep
+/data/*
+!/data/.gitkeep
+
+# Export packages can contain passwords and private keys.
+/exports/*
+!/exports/.gitkeep
+
+# Automatic and factory-reset backups contain sensitive data.
+/backups/*
+!/backups/.gitkeep
+
+# Desktop build outputs and downloaded SDK files are reproducible.
+/build/
+/runtime/
+/dist/

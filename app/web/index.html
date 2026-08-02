@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="api-token" content="__API_TOKEN__">
+  <meta name="theme-color" content="#070908">
+  <title>SSH Space</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <canvas id="network-canvas" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="cursor-halo" id="cursor-halo" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <nav class="rail" aria-label="主导航">
+      <button class="brand-mark" title="SSH Space" aria-label="SSH Space"><span>S</span><i>/</i></button>
+      <div class="rail-cluster">
+        <button class="rail-button active" title="服务器" aria-label="服务器"><span>⌘</span><small>01</small></button>
+        <button class="rail-button" data-action="import" title="导入" aria-label="导入"><span>⇣</span><small>02</small></button>
+        <button class="rail-button" data-action="export" title="导出" aria-label="导出"><span>⇡</span><small>03</small></button>
+      </div>
+      <div class="rail-bottom">
+        <button class="rail-button danger-ghost" data-action="reset" title="恢复出厂设置" aria-label="恢复出厂设置"><span>↺</span></button>
+        <button class="rail-button rail-add" data-action="new" title="添加服务器" aria-label="添加服务器"><span>＋</span></button>
+      </div>
+    </nav>
+
+    <aside class="server-index">
+      <header class="index-header">
+        <div class="wordmark"><span class="wordmark-dot"></span><strong>SSH SPACE</strong><small>CONTROL PLANE</small></div>
+        <span class="live-indicator"><i></i>OPENSSH</span>
+      </header>
+
+      <div class="search-command">
+        <span class="search-icon">⌕</span>
+        <input id="server-search" type="search" placeholder="Search endpoints" autocomplete="off" aria-label="搜索服务器">
+        <kbd>CTRL K</kbd>
+      </div>
+
+      <div class="index-meta">
+        <span><b id="server-count">0</b> ENDPOINTS</span>
+        <span id="selection-count">0 SELECTED</span>
+        <button class="micro-button" id="select-all-button">SELECT ALL</button>
+      </div>
+
+      <div id="server-list" class="server-list" aria-live="polite"></div>
+
+      <div class="index-footer">
+        <button class="new-endpoint" data-action="new"><span>＋</span><strong>NEW ENDPOINT</strong><kbd>N</kbd></button>
+        <button class="batch-export" data-action="export" title="导出所选"><span>⇡</span><span>EXPORT</span></button>
+      </div>
+    </aside>
+
+    <main class="command-deck">
+      <header class="deck-header">
+        <div class="breadcrumbs"><span>WORKSPACE</span><i>/</i><strong id="active-alias">NO NODE</strong></div>
+        <div class="deck-toolbar">
+          <span class="coordinates" id="pointer-coordinates">X 0000 / Y 0000</span>
+          <span class="clock" id="clock">00:00:00</span>
+          <button class="icon-button" id="refresh-button" title="刷新" aria-label="刷新">↻</button>
+        </div>
+      </header>
+
+      <section id="empty-state" class="empty-state">
+        <div class="empty-orbit" aria-hidden="true"><i></i><i></i><i></i><span>S/</span></div>
+        <p class="eyebrow">NO ACTIVE ROUTE</p>
+        <h1>SELECT AN ENDPOINT</h1>
+        <button class="command-button primary magnetic" data-action="new"><span>＋</span>创建第一个节点</button>
+      </section>
+
+      <section id="node-workspace" class="node-workspace hidden">
+        <div class="workspace-topline">
+          <div class="status-line"><span id="node-status-dot"></span><strong id="node-status">READY</strong><i></i><span id="node-auth">KEY</span></div>
+          <div class="node-actions">
+            <button class="command-button primary magnetic" id="open-terminal"><span>↗</span>OPEN TERMINAL</button>
+            <button class="icon-button magnetic" id="edit-server" title="编辑服务器" aria-label="编辑服务器">✎</button>
+            <button class="icon-button magnetic" id="export-server" title="导出服务器" aria-label="导出服务器">⇡</button>
+            <button class="icon-button danger magnetic" id="delete-server" title="删除服务器" aria-label="删除服务器">×</button>
+          </div>
+        </div>
+
+        <section class="node-overview">
+          <div class="identity-panel">
+            <p class="eyebrow">ACTIVE ENDPOINT</p>
+            <h1 id="node-title">server</h1>
+            <p id="node-address" class="node-address">root@127.0.0.1:22</p>
+            <div class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><span>ENCRYPTED LINK</span></div>
+            <dl class="endpoint-facts">
+              <div><dt>PORT</dt><dd id="metric-port">22</dd></div>
+              <div><dt>AUTH</dt><dd id="metric-auth">KEY</dd></div>
+              <div><dt>TIMEOUT</dt><dd id="metric-timeout">10S</dd></div>
+              <div><dt>KEEPALIVE</dt><dd id="metric-alive">30S</dd></div>
+            </dl>
+          </div>
+
+          <div class="topology-stage" aria-label="服务器连接拓扑">
+            <div class="stage-grid" aria-hidden="true"></div>
+            <div class="orbit orbit-outer"><i></i><i></i></div>
+            <div class="orbit orbit-middle"><i></i></div>
+            <div class="orbit orbit-inner"></div>
+            <div class="radar-sweep" aria-hidden="true"></div>
+            <div class="topology-core"><span id="topology-initials">SH</span><i></i></div>
+            <span class="topology-label label-local">LOCAL / CLIENT</span>
+            <span class="topology-label label-remote" id="topology-remote">REMOTE / 22</span>
+            <div class="stage-index">NODE <strong id="topology-index">01</strong></div>
+          </div>
+        </section>
+
+        <section class="terminal-panel" id="terminal-panel">
+          <header class="terminal-bar">
+            <div class="terminal-lights"><i></i><i></i><i></i></div>
+            <div class="terminal-context"><span>SESSION</span><strong id="terminal-label">REMOTE EXEC</strong></div>
+            <div class="terminal-controls"><span id="terminal-exit">IDLE</span><button class="icon-button mini" id="clear-output" title="清空输出" aria-label="清空输出">×</button></div>
+          </header>
+          <div class="terminal-output" id="terminal-output" role="log" aria-live="polite">
+            <div class="output-line system"><span>SYS</span><p>Secure execution channel initialized.</p></div>
+          </div>
+          <form class="terminal-input-row" id="command-form">
+            <span class="prompt">❯</span>
+            <input id="command-input" autocomplete="off" spellcheck="false" placeholder="Enter remote command" aria-label="远程命令">
+            <span class="input-mode">SSH</span>
+            <button type="submit" class="run-button" title="运行命令" aria-label="运行命令">↵</button>
+          </form>
+        </section>
+      </section>
+
+      <footer class="deck-footer"><span>LOCAL CONTROL PLANE</span><i></i><span id="footer-runtime">RUNTIME READY</span><b>SSH SPACE / 2026</b></footer>
+    </main>
+  </div>
+
+  <dialog id="server-dialog" class="sheet-dialog">
+    <form id="server-form" class="sheet-content" novalidate>
+      <header class="sheet-header">
+        <div><p class="eyebrow">NODE CONFIGURATION</p><h2 id="server-dialog-title">新建服务器</h2></div>
+        <button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button>
+      </header>
+      <input type="hidden" id="original-alias">
+      <div class="form-grid">
+        <label><span>别名</span><input id="field-alias" required maxlength="64" placeholder="生产环境" aria-describedby="field-alias-error"><small class="field-error" id="field-alias-error"></small></label>
+        <label class="span-2"><span>主机地址</span><input id="field-host" required placeholder="203.0.113.10" aria-describedby="field-host-error"><small class="field-error" id="field-host-error"></small></label>
+        <label><span>用户名</span><input id="field-user" required placeholder="root" aria-describedby="field-user-error"><small class="field-error" id="field-user-error"></small></label>
+        <label><span>端口</span><input id="field-port" required type="number" min="1" max="65535" value="22" aria-describedby="field-port-error"><small class="field-error" id="field-port-error"></small></label>
+      </div>
+      <div class="section-rule"><span>AUTHENTICATION</span></div>
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab active" data-auth-mode="key">密钥</button>
+        <button type="button" class="auth-tab" data-auth-mode="password">密码</button>
+        <button type="button" class="auth-tab" data-auth-mode="interactive">交互</button>
+      </div>
+      <div id="key-fields" class="auth-fields">
+        <label><span>密钥路径</span><input id="field-key" placeholder="keys/prod_ed25519" aria-describedby="field-key-error"><small class="field-error" id="field-key-error"></small></label>
+        <label class="upload-key-button"><input id="key-upload" type="file" hidden><span>⇧</span>选择密钥文件</label>
+      </div>
+      <div id="password-fields" class="auth-fields hidden"><label><span>登录密码</span><input id="field-password" type="password" autocomplete="new-password" placeholder="保持现有密码" aria-describedby="field-password-error"><small class="field-error" id="field-password-error"></small></label></div>
+      <div id="interactive-fields" class="auth-fields hidden"><div class="mode-readout"><span>◌</span><strong>PROMPT ON CONNECT</strong></div></div>
+      <details class="advanced-settings">
+        <summary>高级连接设置 <span>＋</span></summary>
+        <div class="form-grid">
+          <label><span>连接超时 / 秒</span><input id="field-timeout" type="number" min="1" value="10" aria-describedby="field-timeout-error"><small class="field-error" id="field-timeout-error"></small></label>
+          <label><span>保活间隔 / 秒</span><input id="field-alive" type="number" min="0" value="30" aria-describedby="field-alive-error"><small class="field-error" id="field-alive-error"></small></label>
+          <label class="span-2"><span>主机密钥策略</span><select id="field-strict"><option value="accept-new">accept-new</option><option value="yes">yes</option><option value="ask">ask</option><option value="no">no</option></select></label>
+        </div>
+      </details>
+      <div id="server-form-error" class="form-alert hidden" role="alert"><span>!</span><p></p></div>
+      <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button primary" id="server-submit"><span class="button-label">保存节点</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="transfer-dialog" class="sheet-dialog transfer-dialog">
+    <div class="sheet-content">
+      <header class="sheet-header"><div><p class="eyebrow">PORTABLE CONFIG</p><h2>导入服务器</h2></div><button class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-visual"><span>⇣</span><i></i><i></i></div>
+        <strong>IMPORT PACKAGE</strong>
+        <div class="import-actions"><label class="command-button primary"><input id="import-files" type="file" multiple hidden>选择文件</label><label class="command-button"><input id="import-folder" type="file" webkitdirectory multiple hidden>选择批量目录</label></div>
+      </div>
+      <div class="transfer-log" id="transfer-log"></div>
+    </div>
+  </dialog>
+
+  <dialog id="reset-dialog" class="sheet-dialog reset-dialog">
+    <form method="dialog" id="reset-form" class="sheet-content">
+      <header class="sheet-header"><div><p class="eyebrow danger-text">DESTRUCTIVE ACTION</p><h2>恢复出厂设置</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
+      <div class="reset-warning"><strong>服务器配置、工作区密钥和主机指纹将被重置。</strong><p>执行前会创建可恢复备份；历史导出包不会被修改。</p></div>
+      <label class="confirm-field"><span>输入 RESET SSH SPACE 确认</span><input id="reset-confirmation" autocomplete="off" spellcheck="false" placeholder="RESET SSH SPACE"></label>
+      <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button danger-solid" id="reset-submit" disabled>恢复默认配置</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="delete-dialog" class="sheet-dialog confirm-dialog">
+    <form method="dialog" id="delete-form" class="sheet-content">
+      <header class="sheet-header"><div><p class="eyebrow danger-text">REMOVE ENDPOINT</p><h2>删除服务器</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
+      <div class="reset-warning"><strong>将从本地控制台移除 <span id="delete-alias"></span>。</strong><p>此操作不会连接或修改远程服务器，也不会删除历史导出包。</p></div>
+      <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button danger-solid" id="delete-submit"><span class="button-label">确认删除</span></button></footer>
+    </form>
+  </dialog>
+
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
