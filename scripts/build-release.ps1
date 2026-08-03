@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '2.0.0',
+    [string]$Version,
     [switch]$SkipInstaller,
     [switch]$RebuildDesktop
 )
@@ -9,6 +9,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
+$versionPath = Join-Path $root 'VERSION'
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) { throw "Version file is missing: $versionPath" }
+    $Version = [IO.File]::ReadAllText($versionPath, [Text.Encoding]::UTF8).Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid release version: $Version" }
 $buildRoot = Join-Path $root 'build\release'
 $stage = Join-Path $buildRoot 'SSH Space'
 $dist = Join-Path $root 'dist'
@@ -20,10 +26,14 @@ if (-not ([IO.Path]::GetFullPath($stage)).StartsWith($stagePrefix, [StringCompar
 & (Join-Path $PSScriptRoot 'get-openssh.ps1')
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 $releaseExecutable = Join-Path $buildRoot 'SSH Space.exe'
-if ($RebuildDesktop -or -not (Test-Path -LiteralPath (Join-Path $root 'SSH Space.exe') -PathType Leaf)) {
-    & (Join-Path $PSScriptRoot 'build-desktop.ps1') -OutputPath 'build\release\SSH Space.exe'
+$rootExecutable = Join-Path $root 'SSH Space.exe'
+$rootExecutableVersion = if (Test-Path -LiteralPath $rootExecutable -PathType Leaf) {
+    (Get-Item -LiteralPath $rootExecutable).VersionInfo.FileVersion
+} else { '' }
+if ($RebuildDesktop -or $rootExecutableVersion -ne "$Version.0") {
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1') -OutputPath 'build\release\SSH Space.exe' -Version $Version
 } else {
-    Copy-Item -LiteralPath (Join-Path $root 'SSH Space.exe') -Destination $releaseExecutable -Force
+    Copy-Item -LiteralPath $rootExecutable -Destination $releaseExecutable -Force
 }
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
@@ -33,6 +43,7 @@ Copy-Item -LiteralPath $releaseExecutable -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'ssh.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $stage
+[IO.File]::WriteAllText((Join-Path $stage 'VERSION'), $Version, (New-Object Text.UTF8Encoding($false)))
 Copy-Item -LiteralPath (Join-Path $root 'src\desktop\SshSpace.ico') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'app') -Destination $stage -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'runtime') -Destination $stage -Recurse

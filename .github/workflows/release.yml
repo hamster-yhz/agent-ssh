@@ -11,7 +11,6 @@ on:
       version:
         description: Release version without the v prefix
         required: false
-        default: "2.0.0"
 
 permissions:
   contents: write
@@ -35,7 +34,7 @@ jobs:
           } elseif (-not [string]::IsNullOrWhiteSpace($env:MANUAL_VERSION)) {
             $version = $env:MANUAL_VERSION
           } else {
-            $version = "2.0.$env:GITHUB_RUN_NUMBER"
+            $version = (Get-Content -LiteralPath '.\VERSION' -Raw -Encoding UTF8).Trim()
           }
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
             throw "Invalid release version: $version"
@@ -58,6 +57,7 @@ jobs:
           $files = @(
             '.\ssh.ps1',
             '.\app\server.ps1',
+            '.\app\update.ps1',
             '.\scripts\build-desktop.ps1',
             '.\scripts\get-openssh.ps1',
             '.\scripts\build-release.ps1',
@@ -116,6 +116,8 @@ jobs:
             $entries = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
             foreach ($required in @(
               'SSH Space.exe',
+              'VERSION',
+              'app/update.ps1',
               'runtime/openssh/ssh.exe',
               'runtime/openssh/LICENSE.txt',
               'skills/ssh-space/SKILL.md',
@@ -151,6 +153,10 @@ jobs:
           $sshVersion = & $installedSsh -V 2>&1 | Out-String
           if ($sshVersion -notmatch 'OpenSSH_for_Windows') {
             throw "Installed OpenSSH verification failed: $sshVersion"
+          }
+          $installedVersion = (Get-Item -LiteralPath (Join-Path $installRoot 'SSH Space.exe')).VersionInfo.FileVersion
+          if ($installedVersion -ne "$env:APP_VERSION.0") {
+            throw "Installed desktop version is $installedVersion, expected $env:APP_VERSION.0"
           }
           if (Test-Path -LiteralPath (Join-Path $installRoot 'config\servers.local.json')) {
             throw 'Installer unexpectedly created a local server configuration.'

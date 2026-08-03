@@ -23,6 +23,8 @@ if (-not (Test-Path -LiteralPath $PowerShellExecutable -PathType Leaf)) {
 }
 $PowerShellRuntimeEdition = [string]$PSVersionTable.PSEdition
 $PowerShellRuntimeVersion = $PSVersionTable.PSVersion.ToString()
+. (Join-Path $AppRoot 'update.ps1')
+$ApplicationVersion = Get-SshSpaceApplicationVersion
 
 function New-ApiToken {
     $bytes = New-Object byte[] 32
@@ -88,6 +90,7 @@ function Get-PublicState {
                 sshPath = $runtime.SshPath
                 powerShellEdition = $PowerShellRuntimeEdition
                 powerShellVersion = $PowerShellRuntimeVersion
+                appVersion = $ApplicationVersion
             }
         }
     }
@@ -127,6 +130,7 @@ function Get-PublicState {
             sshPath = $runtime.SshPath
             powerShellEdition = $PowerShellRuntimeEdition
             powerShellVersion = $PowerShellRuntimeVersion
+            appVersion = $ApplicationVersion
         }
     }
 }
@@ -334,6 +338,25 @@ try {
 
             switch ("$($request.HttpMethod) $path") {
                 'GET /api/state' { Send-Json $context (Get-PublicState) }
+                'GET /api/update/check' {
+                    $force = $request.QueryString['force'] -eq '1'
+                    Send-Json $context (Get-SshSpaceUpdateInfo -Force:$force)
+                }
+                'POST /api/update/download' {
+                    $body = Read-RequestJson $request
+                    $result = Save-SshSpaceUpdatePackage ([string](Get-ObjectValue $body 'version' ''))
+                    Send-Json $context $result
+                }
+                'POST /api/update/install' {
+                    $body = Read-RequestJson $request
+                    $result = Start-SshSpaceUpdateInstaller ([string](Get-ObjectValue $body 'version' ''))
+                    Send-Json $context $result
+                }
+                'POST /api/update/release/open' {
+                    $body = Read-RequestJson $request
+                    Open-SshSpaceReleasePage ([string](Get-ObjectValue $body 'version' ''))
+                    Send-Json $context @{ ok = $true }
+                }
                 'POST /api/server/save' {
                     $alias = Save-ServerFromRequest (Read-RequestJson $request)
                     Send-Json $context @{ ok = $true; alias = $alias }

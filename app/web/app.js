@@ -4,7 +4,8 @@ const token = document.querySelector('meta[name="api-token"]').content;
 const state = {
   servers: [], selectedAlias: null, checked: new Set(), query: '', authMode: 'key', history: [], historyIndex: 0,
   runtime: null, configError: '', saving: false, uploading: false, exporting: false, importing: false,
-  refreshing: false, openingTerminal: false, deleting: false, resetting: false
+  refreshing: false, openingTerminal: false, deleting: false, resetting: false,
+  update: null, checkingUpdate: false, downloadingUpdate: false, installingUpdate: false, updateVerified: false
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -51,7 +52,10 @@ function friendlyError(error) {
     [/unsupported package version/i, '导入包版本不受支持。'],
     [/imported files exceed 10 mb/i, '导入文件总大小不能超过 10 MB。'],
     [/select between 1 and 200 package files/i, '一次请选择 1 到 200 个导入文件。'],
-    [/folder path is outside this workspace/i, '只能打开 SSH Space 工作区内的目录。']
+    [/folder path is outside this workspace/i, '只能打开 SSH Space 工作区内的目录。'],
+    [/already up to date/i, 'SSH Space 已经是最新版本。'],
+    [/failed sha-256|checksum|sha256sums/i, '更新文件完整性校验失败，安装已取消。'],
+    [/latest release|github|update api/i, '暂时无法连接 GitHub 更新服务，请稍后重试。']
   ];
   return translations.find(([pattern]) => pattern.test(message))?.[1] || message || '操作未完成，请稍后重试。';
 }
@@ -217,6 +221,149 @@ async function loadState(preferredAlias) {
   if (state.configError) toast(`配置文件损坏：${state.configError}`, 'error');
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return '';
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function compareVersions(left, right) {
+  const a = String(left || '').split('.').map(Number);
+  const b = String(right || '').split('.').map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if ((a[index] || 0) !== (b[index] || 0)) return (a[index] || 0) - (b[index] || 0);
+  }
+  return 0;
+}
+
+function renderUpdateDialog() {
+  const update = state.update;
+  const current = update?.currentVersion || state.runtime?.appVersion || '—';
+  const latest = update?.latestVersion || '—';
+  $('#update-current-version').textContent = current;
+  $('#update-latest-version').textContent = latest;
+  $('#update-notes').textContent = update?.notes?.trim() || '此版本没有提供额外更新说明。';
+  $('#update-size').textContent = update?.downloadSize ? `SETUP / ${formatBytes(update.downloadSize)}` : '';
+  $('#update-release-page').disabled = !update?.latestVersion;
+  $('#update-download').disabled = !update?.updateAvailable || state.downloadingUpdate;
+  $('#update-install').disabled = !state.updateVerified || state.installingUpdate;
+  $('#update-install').classList.toggle('hidden', !state.updateVerified);
+  $('#update-download').classList.toggle('hidden', state.updateVerified);
+  const integrity = $('#update-integrity');
+  integrity.classList.toggle('verified', state.updateVerified);
+  $('#update-integrity-label').textContent = state.updateVerified
+    ? '安装程序已通过 SHA-256 校验'
+    : (state.downloadingUpdate
+      ? '正在下载并核对官方校验文件…'
+      : (update && !update.updateAvailable ? '无需下载，当前版本无需更新' : '等待下载与完整性校验'));
+  if (!update) {
+    $('#update-availability').textContent = 'CHECKING RELEASE CHANNEL';
+    $('#update-summary').textContent = '正在通过 GitHub Releases 检查最新稳定版本。';
+  } else if (update.updateAvailable) {
+    $('#update-availability').textContent = 'STABLE UPDATE AVAILABLE';
+    $('#update-summary').textContent = `发现 SSH Space ${latest}。下载后会先校验 SHA-256，确认完整才允许安装。`;
+  } else if (compareVersions(current, latest) > 0) {
+    $('#update-availability').textContent = 'LOCAL BUILD AHEAD';
+    $('#update-summary').textContent = `当前 ${current} 高于公开稳定版 ${latest}，无需更新。`;
+  } else {
+    $('#update-availability').textContent = 'RELEASE CHANNEL CURRENT';
+    $('#update-summary').textContent = `当前 ${current} 已经是最新稳定版本。`;
+  }
+}
+
+function openUpdateDialog() {
+  $('#update-error').classList.add('hidden');
+  renderUpdateDialog();
+  if (!$('#update-dialog').open) $('#update-dialog').showModal();
+}
+
+async function checkForUpdates(manual = false) {
+  if (state.checkingUpdate) return;
+  state.checkingUpdate = true;
+  setBusy($('#update-button'), true);
+  try {
+    const update = await api(`/api/update/check${manual ? '?force=1' : ''}`);
+    const previousVersion = state.update?.latestVersion;
+    state.update = update;
+    if (previousVersion && previousVersion !== update.latestVersion) state.updateVerified = false;
+    $('#update-button').classList.toggle('update-ready', Boolean(update.updateAvailable));
+    renderUpdateDialog();
+    if (manual) openUpdateDialog();
+    else if (update.updateAvailable) {
+      toast(`发现新版本 ${update.latestVersion}`, 'info', { label: '查看更新', handler: () => openUpdateDialog() });
+    }
+  } catch (error) {
+    if (manual) toast(friendlyError(error), 'error');
+  } finally {
+    state.checkingUpdate = false;
+    setBusy($('#update-button'), false);
+  }
+}
+
+async function downloadUpdate() {
+  if (!state.update?.updateAvailable || state.downloadingUpdate) return;
+  state.downloadingUpdate = true;
+  state.updateVerified = false;
+  $('#update-error').classList.add('hidden');
+  setBusy($('#update-download'), true, '下载并校验');
+  renderUpdateDialog();
+  try {
+    const result = await api('/api/update/download', {
+      method: 'POST', body: JSON.stringify({ version: state.update.latestVersion })
+    });
+    if (!result.verified) throw new Error('Downloaded installer failed SHA-256 verification.');
+    state.updateVerified = true;
+    toast(`SSH Space ${result.version} 已下载并通过校验`);
+  } catch (error) {
+    const message = friendlyError(error);
+    $('#update-error').textContent = message;
+    $('#update-error').classList.remove('hidden');
+  } finally {
+    state.downloadingUpdate = false;
+    setBusy($('#update-download'), false, '下载并校验');
+    renderUpdateDialog();
+  }
+}
+
+function requestUpdateInstall() {
+  if (!state.updateVerified || state.installingUpdate) return;
+  $('#update-install-version').textContent = state.update?.latestVersion || '—';
+  $('#update-install-dialog').showModal();
+}
+
+async function installUpdate() {
+  if (!state.updateVerified || state.installingUpdate) return;
+  state.installingUpdate = true;
+  $('#update-error').classList.add('hidden');
+  setBusy($('#update-install-confirm'), true, '正在启动安装器');
+  renderUpdateDialog();
+  try {
+    await api('/api/update/install', {
+      method: 'POST', body: JSON.stringify({ version: state.update.latestVersion })
+    });
+    $('#update-install-dialog').close();
+    toast('安装器即将启动，SSH Space 会自动关闭并在更新后重新打开', 'info');
+    $('#update-install').disabled = true;
+  } catch (error) {
+    const message = friendlyError(error);
+    $('#update-error').textContent = message;
+    $('#update-error').classList.remove('hidden');
+    state.installingUpdate = false;
+    setBusy($('#update-install-confirm'), false, '正在启动安装器');
+    renderUpdateDialog();
+  }
+}
+
+async function openLatestRelease() {
+  if (!state.update?.latestVersion) return;
+  try {
+    await api('/api/update/release/open', {
+      method: 'POST', body: JSON.stringify({ version: state.update.latestVersion })
+    });
+  } catch (error) { toast(friendlyError(error), 'error'); }
+}
+
 function render() {
   const filtered = state.servers.filter(server => `${server.alias} ${server.host} ${server.user}`.toLowerCase().includes(state.query.toLowerCase()));
   $('#server-count').textContent = state.servers.length;
@@ -252,9 +399,10 @@ function render() {
   $('#active-alias').textContent = server?.alias || 'NO NODE';
   const sshVersion = String(state.runtime?.version || '').match(/OpenSSH(?:_for_Windows)?_([^\s,]+)/i)?.[1] || 'READY';
   const powerShellVersion = String(state.runtime?.powerShellVersion || '').split('.').slice(0, 2).join('.') || '?';
+  const appVersion = state.runtime?.appVersion || '?';
   $('#footer-runtime').textContent = state.runtime?.sshAvailable
-    ? `PS ${powerShellVersion} / SSH ${sshVersion}`
-    : `PS ${powerShellVersion} / OPENSSH REQUIRED`;
+    ? `APP ${appVersion} / PS ${powerShellVersion} / SSH ${sshVersion}`
+    : `APP ${appVersion} / PS ${powerShellVersion} / OPENSSH REQUIRED`;
   if (!server) return;
   $('#node-title').textContent = server.alias;
   $('#node-address').textContent = `${server.user}@${server.host}:${server.port}`;
@@ -504,6 +652,11 @@ function bindEvents() {
     } catch (error) { toast(friendlyError(error), 'error'); }
     finally { state.refreshing = false; setBusy(event.currentTarget, false); }
   });
+  $('#update-button').addEventListener('click', () => checkForUpdates(true));
+  $('#update-download').addEventListener('click', downloadUpdate);
+  $('#update-install').addEventListener('click', requestUpdateInstall);
+  $('#update-install-form').addEventListener('submit', event => { event.preventDefault(); installUpdate(); });
+  $('#update-release-page').addEventListener('click', openLatestRelease);
   $('#edit-server').addEventListener('click', () => openServerDialog(state.servers.find(server => server.alias === state.selectedAlias)));
   $('#export-server').addEventListener('click', () => exportServers([state.selectedAlias]));
   $('#open-terminal').addEventListener('click', async event => {
@@ -656,4 +809,6 @@ bindEvents();
 startClock();
 startNetworkCanvas();
 bindMotion();
-loadState().catch(error => toast(friendlyError(error), 'error'));
+loadState()
+  .then(() => setTimeout(() => checkForUpdates(false), 1200))
+  .catch(error => toast(friendlyError(error), 'error'));

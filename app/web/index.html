@@ -59,6 +59,7 @@
         <div class="deck-toolbar">
           <span class="coordinates" id="pointer-coordinates">X 0000 / Y 0000</span>
           <span class="clock" id="clock">00:00:00</span>
+          <button class="icon-button update-trigger" id="update-button" title="检查更新" aria-label="检查更新"><span>⇣</span><i></i></button>
           <button class="icon-button" id="refresh-button" title="刷新" aria-label="刷新">↻</button>
         </div>
       </header>
@@ -194,6 +195,45 @@
       <header class="sheet-header"><div><p class="eyebrow danger-text">REMOVE ENDPOINT</p><h2>删除服务器</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
       <div class="reset-warning"><strong>将从本地控制台移除 <span id="delete-alias"></span>。</strong><p>此操作不会连接或修改远程服务器，也不会删除历史导出包。</p></div>
       <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button danger-solid" id="delete-submit"><span class="button-label">确认删除</span></button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="update-dialog" class="sheet-dialog update-dialog">
+    <div class="sheet-content">
+      <header class="sheet-header">
+        <div><p class="eyebrow">VERIFIED UPDATE</p><h2>应用更新</h2></div>
+        <button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button>
+      </header>
+      <div class="update-hero">
+        <div class="update-orbit" aria-hidden="true"><i></i><i></i><span>⇣</span></div>
+        <div>
+          <span class="update-availability" id="update-availability">CHECKING RELEASE CHANNEL</span>
+          <h3><b id="update-current-version">—</b><i>→</i><strong id="update-latest-version">—</strong></h3>
+          <p id="update-summary">正在通过 GitHub Releases 检查最新稳定版本。</p>
+        </div>
+      </div>
+      <div class="update-integrity" id="update-integrity">
+        <span>SHA-256</span><strong id="update-integrity-label">等待下载与完整性校验</strong><i></i>
+      </div>
+      <div class="update-notes-wrap">
+        <div class="section-rule"><span>RELEASE NOTES</span></div>
+        <pre id="update-notes">暂无更新说明。</pre>
+      </div>
+      <div class="update-error hidden" id="update-error" role="alert"></div>
+      <footer class="sheet-footer update-footer">
+        <button type="button" class="command-button" id="update-release-page">在 GitHub 查看</button>
+        <span class="update-size" id="update-size"></span>
+        <button type="button" class="command-button primary" id="update-download"><span class="button-label">下载并校验</span></button>
+        <button type="button" class="command-button primary hidden" id="update-install">立即安装</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="update-install-dialog" class="sheet-dialog confirm-dialog">
+    <form method="dialog" id="update-install-form" class="sheet-content">
+      <header class="sheet-header"><div><p class="eyebrow">VERIFIED INSTALLER</p><h2>确认安装更新</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
+      <div class="reset-warning update-install-warning"><strong>即将安装 SSH Space <span id="update-install-version">—</span>。</strong><p>应用会暂时关闭，并在安装完成后重新打开。更新只替换程序文件，不会覆盖服务器配置、密钥、导出包或备份。</p></div>
+      <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button primary" id="update-install-confirm"><span class="button-label">确认并安装</span></button></footer>
     </form>
   </dialog>
 

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$OutputPath
+    [string]$OutputPath,
+    [string]$Version
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +25,9 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
     if ($PSBoundParameters.ContainsKey('OutputPath')) {
         $childArguments += @('-OutputPath', $OutputPath)
     }
+    if ($PSBoundParameters.ContainsKey('Version')) {
+        $childArguments += @('-Version', $Version)
+    }
     & $windowsPowerShell @childArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Windows PowerShell desktop build failed with exit code $LASTEXITCODE."
@@ -33,6 +37,12 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
 
 $packageVersion = '1.0.2592.51'
 $root = Split-Path -Parent $PSScriptRoot
+$versionPath = Join-Path $root 'VERSION'
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) { throw "Version file is missing: $versionPath" }
+    $Version = [IO.File]::ReadAllText($versionPath, [Text.Encoding]::UTF8).Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid desktop version: $Version" }
 $source = Join-Path $root 'src\desktop\SshSpace.Desktop.cs'
 $manifest = Join-Path $root 'src\desktop\app.manifest'
 $icon = Join-Path $root 'src\desktop\SshSpace.ico'
@@ -44,6 +54,7 @@ $output = if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     [IO.Path]::GetFullPath((Join-Path $root $OutputPath))
 }
 $temporary = Join-Path $buildRoot 'SSH Space.build.exe'
+$temporarySource = Join-Path $buildRoot 'SshSpace.Desktop.build.cs'
 $core = Join-Path $cache 'Microsoft.Web.WebView2.Core.dll'
 $winForms = Join-Path $cache 'Microsoft.Web.WebView2.WinForms.dll'
 $loaderX64 = Join-Path $cache 'WebView2Loader.x64.dll'
@@ -85,6 +96,11 @@ try {
     if (Test-Path -LiteralPath $temporary) {
         Remove-Item -LiteralPath $temporary -Force
     }
+    $sourceText = [IO.File]::ReadAllText($source, [Text.Encoding]::UTF8)
+    $assemblyVersion = "$Version.0"
+    $sourceText = [regex]::Replace($sourceText, '\[assembly: AssemblyVersion\("[^"]+"\)\]', "[assembly: AssemblyVersion(`"$assemblyVersion`")]")
+    $sourceText = [regex]::Replace($sourceText, '\[assembly: AssemblyFileVersion\("[^"]+"\)\]', "[assembly: AssemblyFileVersion(`"$assemblyVersion`")]")
+    [IO.File]::WriteAllText($temporarySource, $sourceText, (New-Object Text.UTF8Encoding($false)))
     $resourceOptions = @(
         "/resource:`"$core`",SshSpace.Resources.WebView2.Core",
         "/resource:`"$winForms`",SshSpace.Resources.WebView2.WinForms",
@@ -99,7 +115,7 @@ try {
     $parameters.CompilerOptions = "/target:winexe /optimize+ /win32icon:`"$icon`" /win32manifest:`"$manifest`" " + ($resourceOptions -join ' ')
     @('System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll', $core, $winForms) |
         ForEach-Object { [void]$parameters.ReferencedAssemblies.Add($_) }
-    $result = $provider.CompileAssemblyFromFile($parameters, $source)
+    $result = $provider.CompileAssemblyFromFile($parameters, $temporarySource)
     $provider.Dispose()
     if ($result.Errors.HasErrors) {
         $messages = @($result.Errors | ForEach-Object { "$($_.FileName):$($_.Line): $($_.ErrorText)" })
@@ -110,5 +126,8 @@ try {
 } finally {
     if (Test-Path -LiteralPath $temporary) {
         Remove-Item -LiteralPath $temporary -Force
+    }
+    if (Test-Path -LiteralPath $temporarySource) {
+        Remove-Item -LiteralPath $temporarySource -Force
     }
 }
