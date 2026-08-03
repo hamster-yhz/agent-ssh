@@ -30,13 +30,15 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 New-Item -ItemType Directory -Path $stage, $dist -Force | Out-Null
 
 Copy-Item -LiteralPath $releaseExecutable -Destination $stage
-Copy-Item -LiteralPath (Join-Path $root 'SSH Space.bat') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'ssh.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\desktop\SshSpace.ico') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'app') -Destination $stage -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'runtime') -Destination $stage -Recurse
+Copy-Item -LiteralPath (Join-Path $root 'skills') -Destination $stage -Recurse
+New-Item -ItemType Directory -Path (Join-Path $stage 'scripts') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'scripts\install-codex-skill.ps1') -Destination (Join-Path $stage 'scripts')
 
 foreach ($directory in @('config', 'keys', 'data', 'exports', 'backups')) {
     New-Item -ItemType Directory -Path (Join-Path $stage $directory) -Force | Out-Null

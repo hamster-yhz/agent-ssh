@@ -60,7 +60,9 @@ jobs:
             '.\app\server.ps1',
             '.\scripts\build-desktop.ps1',
             '.\scripts\get-openssh.ps1',
-            '.\scripts\build-release.ps1'
+            '.\scripts\build-release.ps1',
+            '.\scripts\install-codex-skill.ps1',
+            '.\skills\ssh-space\scripts\find-ssh-space.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -88,7 +90,11 @@ jobs:
             foreach ($required in @(
               'SSH Space.exe',
               'runtime/openssh/ssh.exe',
-              'runtime/openssh/LICENSE.txt'
+              'runtime/openssh/LICENSE.txt',
+              'skills/ssh-space/SKILL.md',
+              'skills/ssh-space/agents/openai.yaml',
+              'skills/ssh-space/scripts/find-ssh-space.ps1',
+              'scripts/install-codex-skill.ps1'
             )) {
               if ($entries -notcontains $required) { throw "Portable package is missing $required" }
             }
@@ -97,6 +103,9 @@ jobs:
             }
             if ($entries | Where-Object { $_ -match '^(keys|exports|backups)/(?!.gitkeep$).+' }) {
               throw 'Portable package contains private runtime data.'
+            }
+            if ($entries -contains 'SSH Space.bat') {
+              throw 'Portable package still contains the retired BAT launcher.'
             }
           } finally {
             $archive.Dispose()

@@ -9,7 +9,6 @@ SSH Space 是一个轻量的 Windows 桌面 SSH 控制台。用户和本地 Agen
 主入口：
 
 - `SSH Space.exe`：完整桌面应用。打开独立原生窗口，页面、服务器配置、导入导出和终端均在窗口内运行，不启动外部浏览器。
-- `SSH Space.bat`：桌面应用的批处理入口，适合建立快捷方式或从其他脚本调用。
 
 桌面应用使用系统 WebView2 渲染现代界面，并在后台启动或复用 `127.0.0.1` 本地服务。WebView2 组件已嵌入 EXE，首次运行会释放到用户本地缓存；Windows 缺少 WebView2 Runtime 时会显示明确错误。正式发布包同时内置官方 Win32-OpenSSH 客户端，不依赖用户另外安装 OpenSSH。
 
@@ -80,6 +79,18 @@ git push origin main --tags
 .\ssh.ps1 config
 .\ssh.ps1 reset
 ```
+
+## Codex Skill
+
+SSH Space 自带正式的 Codex Skill。Agent 通过稳定的 `ssh.ps1` 命令行操作服务器，不调用桌面应用内部的本地 HTTP API，也不会直接读取或输出密码和私钥。
+
+使用安装程序时，勾选“Install the SSH Space Skill for Codex”，安装完成后重启 Codex。便携版或源码目录可运行：
+
+```powershell
+.\scripts\install-codex-skill.ps1
+```
+
+Skill 会安装到 `%USERPROFILE%\.codex\skills\ssh-space`。它可以从当前目录、`SSH_SPACE_HOME`、标准安装目录和当前用户卸载信息中定位 SSH Space。
 
 ## 配置
 
@@ -171,11 +182,12 @@ $env:SSH_SPACE_CONFIG = 'D:\private\my-servers.json'
 ## 项目结构
 
 ```text
-SSH Space.exe / SSH Space.bat  桌面入口
+SSH Space.exe                  桌面入口
 ssh.ps1                        用户与 Agent 的 CLI 入口
 app/                           应用运行文件
 src/desktop/                   桌面程序源码和清单
 scripts/                       构建脚本
+skills/ssh-space/              Codex Skill
 config/ keys/ data/            本地配置、密钥和运行数据
 exports/ backups/              敏感导出包与恢复备份
 ```
