@@ -6,6 +6,31 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# CodeDOM desktop compilation targets .NET Framework and is unavailable from
+# PowerShell 7's .NET runtime. Windows runners still include Windows PowerShell,
+# so transparently hand off only the compiler script when invoked from pwsh.
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    $windowsPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+        throw 'Windows PowerShell 5.1 is required to build the desktop application.'
+    }
+    $childArguments = @(
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $PSCommandPath
+    )
+    if ($PSBoundParameters.ContainsKey('OutputPath')) {
+        $childArguments += @('-OutputPath', $OutputPath)
+    }
+    & $windowsPowerShell @childArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows PowerShell desktop build failed with exit code $LASTEXITCODE."
+    }
+    return
+}
+
 $packageVersion = '1.0.2592.51'
 $root = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $root 'src\desktop\SshSpace.Desktop.cs'

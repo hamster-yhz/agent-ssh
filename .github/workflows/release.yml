@@ -76,7 +76,8 @@ jobs:
           node --check .\app\web\app.js
 
       - name: Build release packages
-        shell: pwsh
+        # The WinForms host targets .NET Framework and compiles through CodeDOM.
+        shell: powershell
         run: .\scripts\build-release.ps1 -Version $env:APP_VERSION -RebuildDesktop
 
       - name: Verify package isolation and installation
