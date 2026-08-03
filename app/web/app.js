@@ -250,10 +250,11 @@ function render() {
   $('#empty-state').classList.toggle('hidden', Boolean(server));
   $('#node-workspace').classList.toggle('hidden', !server);
   $('#active-alias').textContent = server?.alias || 'NO NODE';
-  const runtimeVersion = String(state.runtime?.version || 'READY').split(/\s+/)[0];
+  const sshVersion = String(state.runtime?.version || '').match(/OpenSSH(?:_for_Windows)?_([^\s,]+)/i)?.[1] || 'READY';
+  const powerShellVersion = String(state.runtime?.powerShellVersion || '').split('.').slice(0, 2).join('.') || '?';
   $('#footer-runtime').textContent = state.runtime?.sshAvailable
-    ? runtimeVersion
-    : 'OPENSSH REQUIRED';
+    ? `PS ${powerShellVersion} / SSH ${sshVersion}`
+    : `PS ${powerShellVersion} / OPENSSH REQUIRED`;
   if (!server) return;
   $('#node-title').textContent = server.alias;
   $('#node-address').textContent = `${server.user}@${server.host}:${server.port}`;

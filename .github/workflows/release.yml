@@ -80,6 +80,32 @@ jobs:
         shell: powershell
         run: .\scripts\build-release.ps1 -Version $env:APP_VERSION -RebuildDesktop
 
+      - name: Validate PowerShell 7 runtime
+        shell: pwsh
+        run: |
+          $port = 18787
+          $server = Start-Process -FilePath (Get-Command pwsh.exe).Source -ArgumentList @(
+            '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            '-File', (Resolve-Path '.\app\server.ps1'), '-Port', $port, '-NoBrowser'
+          ) -WindowStyle Hidden -PassThru
+          try {
+            $ready = $false
+            foreach ($attempt in 1..40) {
+              if ($server.HasExited) { throw "PowerShell 7 service exited with $($server.ExitCode)." }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:$port/" -TimeoutSec 2
+                if ($response.StatusCode -eq 200 -and $response.Content -match '<title>SSH Space</title>') {
+                  $ready = $true
+                  break
+                }
+              } catch {}
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $ready) { throw 'SSH Space did not start under PowerShell 7.' }
+          } finally {
+            if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+          }
+
       - name: Verify package isolation and installation
         shell: pwsh
         run: |

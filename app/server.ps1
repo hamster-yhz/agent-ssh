@@ -13,6 +13,17 @@ $Root = Split-Path -Parent $AppRoot
 $WebRoot = Join-Path $AppRoot 'web'
 . (Join-Path $Root 'ssh.ps1')
 
+$PowerShellExecutable = if ($PSVersionTable.PSEdition -eq 'Core') {
+    Join-Path $PSHOME 'pwsh.exe'
+} else {
+    Join-Path $PSHOME 'powershell.exe'
+}
+if (-not (Test-Path -LiteralPath $PowerShellExecutable -PathType Leaf)) {
+    throw "The active PowerShell executable was not found: $PowerShellExecutable"
+}
+$PowerShellRuntimeEdition = [string]$PSVersionTable.PSEdition
+$PowerShellRuntimeVersion = $PSVersionTable.PSVersion.ToString()
+
 function New-ApiToken {
     $bytes = New-Object byte[] 32
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -70,7 +81,14 @@ function Get-PublicState {
             workspace = $Root
             exportsPath = (Join-Path $Root 'exports')
             configError = $_.Exception.Message
-            runtime = [ordered]@{ sshAvailable = $runtime.Available; version = $runtime.Version; source = $runtime.Source; sshPath = $runtime.SshPath }
+            runtime = [ordered]@{
+                sshAvailable = $runtime.Available
+                version = $runtime.Version
+                source = $runtime.Source
+                sshPath = $runtime.SshPath
+                powerShellEdition = $PowerShellRuntimeEdition
+                powerShellVersion = $PowerShellRuntimeVersion
+            }
         }
     }
     $servers = foreach ($entry in Get-ServerEntries $config) {
@@ -102,7 +120,14 @@ function Get-PublicState {
         workspace = $Root
         exportsPath = (Join-Path $Root 'exports')
         configError = ''
-        runtime = [ordered]@{ sshAvailable = $runtime.Available; version = $runtime.Version; source = $runtime.Source; sshPath = $runtime.SshPath }
+        runtime = [ordered]@{
+            sshAvailable = $runtime.Available
+            version = $runtime.Version
+            source = $runtime.Source
+            sshPath = $runtime.SshPath
+            powerShellEdition = $PowerShellRuntimeEdition
+            powerShellVersion = $PowerShellRuntimeVersion
+        }
     }
 }
 
@@ -216,7 +241,7 @@ function Open-ServerTerminal {
     $config = Read-SshSpaceConfig
     [void](Get-ServerSettings $config (Get-ServerEntry $config $Alias))
     $encoded = ConvertTo-EncodedPowerShell (Get-ChildPowerShellCode $Alias '')
-    Start-Process powershell.exe -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) | Out-Null
+    Start-Process -FilePath $PowerShellExecutable -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) | Out-Null
 }
 
 function Invoke-RemoteCommandProcess {
@@ -226,7 +251,7 @@ function Invoke-RemoteCommandProcess {
     [void](Get-ServerSettings $config (Get-ServerEntry $config $Alias))
     $encoded = ConvertTo-EncodedPowerShell (Get-ChildPowerShellCode $Alias $Command)
     $info = New-Object Diagnostics.ProcessStartInfo
-    $info.FileName = 'powershell.exe'
+    $info.FileName = $PowerShellExecutable
     $info.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true

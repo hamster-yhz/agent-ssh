@@ -308,13 +308,7 @@ internal static class LocalServer
             throw new InvalidOperationException("No free local port is available in the range 8787-8807.");
         }
 
-        string powerShell = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System),
-            @"WindowsPowerShell\v1.0\powershell.exe");
-        if (!File.Exists(powerShell))
-        {
-            throw new FileNotFoundException("Windows PowerShell is not available on this computer.");
-        }
+        string powerShell = FindPowerShell();
 
         string script = Path.Combine(root, "app", "server.ps1").Replace("'", "''");
         string childCode = "& '" + script + "' -Port " + selectedPort + " -NoBrowser";
@@ -348,6 +342,28 @@ internal static class LocalServer
         try { if (!process.HasExited) process.Kill(); } catch { }
         process.Dispose();
         throw new InvalidOperationException("The local SSH Space service did not start.");
+    }
+
+    private static string FindPowerShell()
+    {
+        string[] candidates = new string[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                @"WindowsPowerShell\v1.0\powershell.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                @"PowerShell\7\pwsh.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                @"Microsoft\WindowsApps\pwsh.exe")
+        };
+        foreach (string candidate in candidates)
+        {
+            if (!String.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+        throw new FileNotFoundException(
+            "No supported PowerShell runtime was found. Install Windows PowerShell 5.1 or PowerShell 7.");
     }
 
     private static string Url(int port)

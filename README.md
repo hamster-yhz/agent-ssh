@@ -8,7 +8,7 @@
 不需要数据库，不需要 Node.js，也不需要另外安装 OpenSSH。
 
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows11&logoColor=white)](https://github.com/hamster-yhz/agent-ssh/releases)
-[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell&logoColor=white)](https://github.com/PowerShell/PowerShell)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%2F%207-5391FE?logo=powershell&logoColor=white)](https://github.com/PowerShell/PowerShell)
 [![Bundled OpenSSH](https://img.shields.io/badge/OpenSSH-Bundled-34A853?logo=openssh&logoColor=white)](https://github.com/PowerShell/Win32-OpenSSH)
 [![Build and release](https://github.com/hamster-yhz/agent-ssh/actions/workflows/release.yml/badge.svg)](https://github.com/hamster-yhz/agent-ssh/actions/workflows/release.yml)
 
@@ -203,6 +203,13 @@ RESET SSH SPACE
 <summary><strong>电脑没有安装 OpenSSH，可以连接吗？</strong></summary>
 
 可以。正式安装包和便携版内置经过固定 SHA-256 校验的官方 Win32-OpenSSH。开发目录缺少内置运行时时才会回退到系统 OpenSSH。
+
+</details>
+
+<details>
+<summary><strong>用户安装的是 PowerShell 7，没有 5.1 可以运行吗？</strong></summary>
+
+可以。SSH Space 优先使用 Windows 自带的 PowerShell 5.1；如果系统没有 5.1，会自动检测官方 PowerShell 7 安装目录。应用启动后会在底部显示实际使用的 PowerShell 版本，并让终端和远程命令继续复用同一运行时。
 
 </details>
 
