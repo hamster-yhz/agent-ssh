@@ -34,7 +34,7 @@ VersionInfoDescription=SSH Space desktop SSH control plane
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: checkedonce
-Name: "codexskill"; Description: "Install the SSH Space Skill for Codex"; GroupDescription: "Agent integration:"; Flags: checkedonce
+Name: "codexskill"; Description: "Install the SSH Space Skill for Codex"; GroupDescription: "Agent integration:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
