@@ -310,6 +310,7 @@ function Invoke-SshConnection {
         [string[]]$CommandParts
     )
 
+    $script:SshConnectionExitCode = 1
     $runtime = Assert-OpenSshAvailable
     $sshArguments = @(New-SshArguments $Settings)
     if ($null -ne $CommandParts -and $CommandParts.Count -gt 0) {
@@ -320,7 +321,8 @@ function Invoke-SshConnection {
 
     if ([string]::IsNullOrEmpty($Settings.Password)) {
         & $runtime.SshPath @sshArguments
-        return $LASTEXITCODE
+        $script:SshConnectionExitCode = $LASTEXITCODE
+        return
     }
 
     Ensure-AskPassExecutable
@@ -334,7 +336,7 @@ function Invoke-SshConnection {
         $env:DISPLAY = 'ssh-space'
         $env:SSH_SPACE_PASSWORD = $Settings.Password
         & $runtime.SshPath @sshArguments
-        return $LASTEXITCODE
+        $script:SshConnectionExitCode = $LASTEXITCODE
     } finally {
         $env:SSH_ASKPASS = $previousAskPass
         $env:SSH_ASKPASS_REQUIRE = $previousAskPassRequire
@@ -724,7 +726,10 @@ try {
 
     $serverEntry = Get-ServerEntry $config $Target
     $serverSettings = Get-ServerSettings $config $serverEntry
-    exit (Invoke-SshConnection $serverSettings $RemoteCommand)
+    # Invoke as a statement so native SSH output remains attached to the console.
+    # Capturing the function inside exit (...) swallows remote output in PowerShell.
+    Invoke-SshConnection $serverSettings $RemoteCommand
+    exit $script:SshConnectionExitCode
 } catch {
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
