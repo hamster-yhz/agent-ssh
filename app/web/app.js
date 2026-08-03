@@ -14,7 +14,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
-    headers: { 'Content-Type': 'application/json', 'X-SSH-Space-Token': token, ...(options.headers || {}) }
+    headers: { 'Content-Type': 'application/json', 'X-Agent-Ssh-Token': token, ...(options.headers || {}) }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
@@ -32,8 +32,8 @@ function initials(alias) {
 function friendlyError(error) {
   const message = String(error?.message || error || '').trim();
   const translations = [
-    [/failed to fetch|networkerror|request failed/i, '无法连接本地服务，请确认 SSH Space 仍在运行后重试。'],
-    [/unauthorized/i, '当前页面凭据已失效，请重新打开 SSH Space。'],
+    [/failed to fetch|networkerror|request failed/i, '无法连接本地服务，请确认 agent-ssh 仍在运行后重试。'],
+    [/unauthorized/i, '当前页面凭据已失效，请重新打开 agent-ssh。'],
     [/alias.*1-64|valid server alias|别名需要|invalid server alias/i, '别名需为 1-64 个字符，可使用中文、字母、数字、点、下划线或连字符。'],
     [/alias.*already exists|服务器别名.*已存在/i, '这个服务器别名已经存在，请换一个名称。'],
     [/invalid password action/i, '密码保存状态无效，请关闭窗口后重新编辑。'],
@@ -45,7 +45,7 @@ function friendlyError(error) {
     [/key file does not exist|key file is missing|密钥.*不存在/i, '找不到指定密钥，请重新选择密钥文件或检查路径。'],
     [/key content is not valid base64/i, '密钥文件内容无法读取，请重新选择文件。'],
     [/key file must be between/i, '密钥文件大小必须在 1 字节到 512 KB 之间。'],
-    [/openssh client is not installed|openssh client is unavailable/i, 'OpenSSH 运行时不可用，请重新安装 SSH Space。'],
+    [/openssh client is not installed|openssh client is unavailable/i, 'OpenSSH 运行时不可用，请重新安装 agent-ssh。'],
     [/remote command timed out/i, '远程命令执行超过 120 秒，已停止等待。'],
     [/server .* was not found/i, '找不到该服务器，它可能已被删除或重命名。'],
     [/no server\.json packages were found/i, '没有找到可导入的 server.json 配置包。'],
@@ -53,12 +53,12 @@ function friendlyError(error) {
     [/unsupported package version/i, '导入包版本不受支持。'],
     [/imported files exceed 10 mb/i, '导入文件总大小不能超过 10 MB。'],
     [/select between 1 and 200 package files/i, '一次请选择 1 到 200 个导入文件。'],
-    [/folder path is outside this workspace/i, '只能打开 SSH Space 工作区内的目录。'],
-    [/already up to date/i, 'SSH Space 已经是最新版本。'],
+    [/folder path is outside this workspace/i, '只能打开 agent-ssh 工作区内的目录。'],
+    [/already up to date/i, 'agent-ssh 已经是最新版本。'],
     [/failed sha-256|checksum|sha256sums/i, '更新文件完整性校验失败，安装已取消。'],
     [/latest release|github|update api/i, '暂时无法连接 GitHub 更新服务，请稍后重试。'],
     [/reusable sessions require saved password or key authentication/i, '长连接需要已保存的密码或密钥；需要手动认证时请打开交互终端。'],
-    [/session host did not become ready|session host is missing/i, '本地 SSH 会话服务启动失败，请重新打开 SSH Space 后重试。'],
+    [/session host did not become ready|session host is missing/i, '本地 SSH 会话服务启动失败，请重新打开 agent-ssh 后重试。'],
     [/terminal process exited|terminal launch timed out/i, '终端窗口启动失败，请稍后重试。']
   ];
   return translations.find(([pattern]) => pattern.test(message))?.[1] || message || '操作未完成，请稍后重试。';
@@ -302,7 +302,7 @@ function renderUpdateDialog() {
     $('#update-summary').textContent = '正在通过 GitHub Releases 检查最新稳定版本。';
   } else if (update.updateAvailable) {
     $('#update-availability').textContent = 'STABLE UPDATE AVAILABLE';
-    $('#update-summary').textContent = `发现 SSH Space ${latest}。下载后会先校验 SHA-256，确认完整才允许安装。`;
+    $('#update-summary').textContent = `发现 agent-ssh ${latest}。下载后会先校验 SHA-256，确认完整才允许安装。`;
   } else if (compareVersions(current, latest) > 0) {
     $('#update-availability').textContent = 'LOCAL BUILD AHEAD';
     $('#update-summary').textContent = `当前 ${current} 高于公开稳定版 ${latest}，无需更新。`;
@@ -354,7 +354,7 @@ async function downloadUpdate() {
     });
     if (!result.verified) throw new Error('Downloaded installer failed SHA-256 verification.');
     state.updateVerified = true;
-    toast(`SSH Space ${result.version} 已下载并通过校验`);
+    toast(`agent-ssh ${result.version} 已下载并通过校验`);
   } catch (error) {
     const message = friendlyError(error);
     $('#update-error').textContent = message;
@@ -383,7 +383,7 @@ async function installUpdate() {
       method: 'POST', body: JSON.stringify({ version: state.update.latestVersion })
     });
     $('#update-install-dialog').close();
-    toast('安装器即将启动，SSH Space 会自动关闭并在更新后重新打开', 'info');
+    toast('安装器即将启动，agent-ssh 会自动关闭并在更新后重新打开', 'info');
     $('#update-install').disabled = true;
   } catch (error) {
     const message = friendlyError(error);
@@ -756,11 +756,11 @@ function bindEvents() {
   });
   $('#import-files').addEventListener('change', event => importFiles(event.target.files));
   $('#import-folder').addEventListener('change', event => importFiles(event.target.files));
-  $('#reset-confirmation').addEventListener('input', event => { $('#reset-submit').disabled = event.target.value !== 'RESET SSH SPACE'; });
+  $('#reset-confirmation').addEventListener('input', event => { $('#reset-submit').disabled = event.target.value !== 'RESET agent-ssh'; });
   $('#reset-form').addEventListener('submit', async event => {
     event.preventDefault();
     const confirmation = $('#reset-confirmation').value;
-    if (confirmation !== 'RESET SSH SPACE' || state.resetting) return;
+    if (confirmation !== 'RESET agent-ssh' || state.resetting) return;
     state.resetting = true;
     setBusy($('#reset-submit'), true);
     try {
@@ -774,7 +774,7 @@ function bindEvents() {
     finally {
       state.resetting = false;
       setBusy($('#reset-submit'), false);
-      $('#reset-submit').disabled = $('#reset-confirmation').value !== 'RESET SSH SPACE';
+      $('#reset-submit').disabled = $('#reset-confirmation').value !== 'RESET agent-ssh';
     }
   });
   const dropZone = $('#drop-zone');

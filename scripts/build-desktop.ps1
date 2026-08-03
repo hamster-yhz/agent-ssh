@@ -43,18 +43,19 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = [IO.File]::ReadAllText($versionPath, [Text.Encoding]::UTF8).Trim()
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid desktop version: $Version" }
-$source = Join-Path $root 'src\desktop\SshSpace.Desktop.cs'
+$source = Join-Path $root 'src\desktop\AgentSsh.Desktop.cs'
 $manifest = Join-Path $root 'src\desktop\app.manifest'
-$icon = Join-Path $root 'src\desktop\SshSpace.ico'
+$icon = Join-Path $root 'src\desktop\agent-ssh.ico'
 $buildRoot = Join-Path $root 'build'
 $cache = Join-Path $buildRoot 'cache\webview2'
 $output = if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    Join-Path $root 'SSH Space.exe'
+    Join-Path $root 'agent-ssh.exe'
 } else {
     [IO.Path]::GetFullPath((Join-Path $root $OutputPath))
 }
-$temporary = Join-Path $buildRoot 'SSH Space.build.exe'
-$temporarySource = Join-Path $buildRoot 'SshSpace.Desktop.build.cs'
+$temporaryDirectory = Join-Path $buildRoot 'desktop-compile'
+$temporary = Join-Path $temporaryDirectory 'agent-ssh.exe'
+$temporarySource = Join-Path $temporaryDirectory 'AgentSsh.Desktop.build.cs'
 $core = Join-Path $cache 'Microsoft.Web.WebView2.Core.dll'
 $winForms = Join-Path $cache 'Microsoft.Web.WebView2.WinForms.dll'
 $loaderX64 = Join-Path $cache 'WebView2Loader.x64.dll'
@@ -91,7 +92,7 @@ foreach ($dependency in $dependencies) {
     }
 }
 
-New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $buildRoot, $temporaryDirectory -Force | Out-Null
 try {
     if (Test-Path -LiteralPath $temporary) {
         Remove-Item -LiteralPath $temporary -Force
@@ -102,10 +103,10 @@ try {
     $sourceText = [regex]::Replace($sourceText, '\[assembly: AssemblyFileVersion\("[^"]+"\)\]', "[assembly: AssemblyFileVersion(`"$assemblyVersion`")]")
     [IO.File]::WriteAllText($temporarySource, $sourceText, (New-Object Text.UTF8Encoding($false)))
     $resourceOptions = @(
-        "/resource:`"$core`",SshSpace.Resources.WebView2.Core",
-        "/resource:`"$winForms`",SshSpace.Resources.WebView2.WinForms",
-        "/resource:`"$loaderX64`",SshSpace.Resources.WebView2.Loader.x64",
-        "/resource:`"$loaderX86`",SshSpace.Resources.WebView2.Loader.x86"
+        "/resource:`"$core`",AgentSsh.Resources.WebView2.Core",
+        "/resource:`"$winForms`",AgentSsh.Resources.WebView2.WinForms",
+        "/resource:`"$loaderX64`",AgentSsh.Resources.WebView2.Loader.x64",
+        "/resource:`"$loaderX86`",AgentSsh.Resources.WebView2.Loader.x86"
     )
     $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
     $parameters = New-Object CodeDom.Compiler.CompilerParameters

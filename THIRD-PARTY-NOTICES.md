@@ -1,6 +1,6 @@
 # Third-party notices
 
-SSH Space release packages include the official Microsoft Win32-OpenSSH client distribution.
+agent-ssh release packages include the official Microsoft Win32-OpenSSH client distribution.
 
 - Project: Win32-OpenSSH
 - Version: 10.0.0.0p2-Preview

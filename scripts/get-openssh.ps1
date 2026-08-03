@@ -19,11 +19,16 @@ $runtimeRoot = if ([string]::IsNullOrWhiteSpace($Destination)) {
 }
 $workspacePrefix = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
 if (-not $runtimeRoot.StartsWith($workspacePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'OpenSSH destination must stay inside the SSH Space workspace.'
+    throw 'OpenSSH destination must stay inside the agent-ssh workspace.'
 }
 
 $sshExe = Join-Path $runtimeRoot 'ssh.exe'
 if ((Test-Path -LiteralPath $sshExe -PathType Leaf) -and -not $Force) {
+    $uppercaseMarker = Join-Path $runtimeRoot 'AGENT-SSH-VERSION.txt'
+    if (Test-Path -LiteralPath $uppercaseMarker -PathType Leaf) { Remove-Item -LiteralPath $uppercaseMarker -Force }
+    $legacyMarker = Join-Path $runtimeRoot 'SSH-SPACE-VERSION.txt'
+    if (Test-Path -LiteralPath $legacyMarker -PathType Leaf) { Remove-Item -LiteralPath $legacyMarker -Force }
+    [IO.File]::WriteAllText((Join-Path $runtimeRoot 'agent-ssh-version.txt'), "$version`r`n$sha256`r`n", (New-Object Text.UTF8Encoding($false)))
     Write-Host "OpenSSH runtime is ready: $runtimeRoot" -ForegroundColor Green
     return
 }
@@ -77,7 +82,7 @@ try {
         }
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $runtimeRoot $fileName)
     }
-    [IO.File]::WriteAllText((Join-Path $runtimeRoot 'SSH-SPACE-VERSION.txt'), "$version`r`n$sha256`r`n", (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $runtimeRoot 'agent-ssh-version.txt'), "$version`r`n$sha256`r`n", (New-Object Text.UTF8Encoding($false)))
     Write-Host "Installed bundled OpenSSH: $runtimeRoot" -ForegroundColor Green
 } finally {
     if (Test-Path -LiteralPath $expanded) { Remove-Item -LiteralPath $expanded -Recurse -Force }

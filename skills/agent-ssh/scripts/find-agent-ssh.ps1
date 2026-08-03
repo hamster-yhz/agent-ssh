@@ -13,6 +13,7 @@ function Add-Candidate {
     try { $candidates.Add([IO.Path]::GetFullPath($Path)) } catch {}
 }
 
+Add-Candidate $env:AGENT_SSH_HOME
 Add-Candidate $env:SSH_SPACE_HOME
 
 $current = if (Test-Path -LiteralPath $StartPath -PathType Leaf) {
@@ -30,19 +31,22 @@ while (-not [string]::IsNullOrWhiteSpace($current)) {
 $skillRoot = Split-Path -Parent $PSScriptRoot
 $packagedRoot = Split-Path -Parent (Split-Path -Parent $skillRoot)
 Add-Candidate $packagedRoot
+Add-Candidate (Join-Path $env:LOCALAPPDATA 'Programs\agent-ssh')
 Add-Candidate (Join-Path $env:LOCALAPPDATA 'Programs\SSH Space')
 
 $uninstallRoots = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -eq 'SSH Space' } |
+    Where-Object { $_.DisplayName -eq 'agent-ssh' -or $_.DisplayName -like 'SSH Space*' } |
     ForEach-Object { $_.InstallLocation }
 foreach ($root in $uninstallRoots) { Add-Candidate $root }
 
 foreach ($candidate in $candidates | Select-Object -Unique) {
-    if ((Test-Path -LiteralPath (Join-Path $candidate 'ssh.ps1') -PathType Leaf) -and
+    $hasCli = (Test-Path -LiteralPath (Join-Path $candidate 'agent-ssh.ps1') -PathType Leaf) -or
+        (Test-Path -LiteralPath (Join-Path $candidate 'ssh.ps1') -PathType Leaf)
+    if ($hasCli -and
         (Test-Path -LiteralPath (Join-Path $candidate 'app\server.ps1') -PathType Leaf)) {
         Write-Output $candidate
         exit 0
     }
 }
 
-throw 'SSH Space was not found. Install it, extract the portable package, set SSH_SPACE_HOME, or run Codex inside its directory.'
+throw 'agent-ssh was not found. Install it, extract the portable package, set AGENT_SSH_HOME, or run Codex inside its directory.'

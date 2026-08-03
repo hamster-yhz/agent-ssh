@@ -1,0 +1,4 @@
+interface:
+  display_name: "agent-ssh"
+  short_description: "Safely operate agent-ssh servers and packages"
+  default_prompt: "Use $agent-ssh to inspect my configured servers and safely run the requested SSH operation."

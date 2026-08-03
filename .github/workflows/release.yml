@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/cache
-          key: ssh-space-${{ runner.os }}-${{ hashFiles('scripts/build-desktop.ps1', 'scripts/get-openssh.ps1') }}
+          key: agent-ssh-${{ runner.os }}-${{ hashFiles('scripts/build-desktop.ps1', 'scripts/get-openssh.ps1') }}
 
       - name: Install installer compiler
         shell: pwsh
@@ -55,6 +55,7 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
+            '.\agent-ssh.ps1',
             '.\ssh.ps1',
             '.\app\server.ps1',
             '.\app\session-client.ps1',
@@ -64,7 +65,7 @@ jobs:
             '.\scripts\get-openssh.ps1',
             '.\scripts\build-release.ps1',
             '.\scripts\install-codex-skill.ps1',
-            '.\skills\ssh-space\scripts\find-ssh-space.ps1'
+            '.\skills\agent-ssh\scripts\find-agent-ssh.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -77,13 +78,13 @@ jobs:
           }
           node --check .\app\web\app.js
 
-          . .\ssh.ps1
-          $descriptor = Ensure-SshSpaceSessionHost
-          $health = Invoke-SshSpaceSessionApi $descriptor 'GET' '/health' $null 3
+          . .\agent-ssh.ps1
+          $descriptor = Ensure-AgentSshSessionHost
+          $health = Invoke-AgentSshSessionApi $descriptor 'GET' '/health' $null 3
           if (-not $health.ok -or $health.idleTimeoutSeconds -ne 600) {
             throw 'Reusable SSH session host verification failed.'
           }
-          if (-not (Stop-SshSpaceSessionHostIfIdle)) {
+          if (-not (Stop-AgentSshSessionHostIfIdle)) {
             throw 'Reusable SSH session host did not stop cleanly.'
           }
 
@@ -106,14 +107,14 @@ jobs:
               if ($server.HasExited) { throw "PowerShell 7 service exited with $($server.ExitCode)." }
               try {
                 $response = Invoke-WebRequest -Uri "http://127.0.0.1:$port/" -TimeoutSec 2
-                if ($response.StatusCode -eq 200 -and $response.Content -match '<title>SSH Space</title>') {
+                if ($response.StatusCode -eq 200 -and $response.Content -match '<title>agent-ssh</title>') {
                   $ready = $true
                   break
                 }
               } catch {}
               Start-Sleep -Milliseconds 250
             }
-            if (-not $ready) { throw 'SSH Space did not start under PowerShell 7.' }
+            if (-not $ready) { throw 'agent-ssh did not start under PowerShell 7.' }
           } finally {
             if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
           }
@@ -122,21 +123,24 @@ jobs:
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $portable = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Portable.zip"
+          $portable = Resolve-Path ".\dist\agent-ssh-$env:APP_VERSION-Portable.zip"
           $archive = [IO.Compression.ZipFile]::OpenRead($portable)
           try {
             $entries = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
             foreach ($required in @(
-              'SSH Space.exe',
+              'agent-ssh.exe',
+              'agent-ssh.ps1',
+              'ssh.ps1',
               'VERSION',
               'app/session-client.ps1',
               'app/session-host.ps1',
               'app/update.ps1',
               'runtime/openssh/ssh.exe',
               'runtime/openssh/LICENSE.txt',
-              'skills/ssh-space/SKILL.md',
-              'skills/ssh-space/agents/openai.yaml',
-              'skills/ssh-space/scripts/find-ssh-space.ps1',
+              'runtime/openssh/agent-ssh-version.txt',
+              'skills/agent-ssh/SKILL.md',
+              'skills/agent-ssh/agents/openai.yaml',
+              'skills/agent-ssh/scripts/find-agent-ssh.ps1',
               'scripts/install-codex-skill.ps1'
             )) {
               if ($entries -notcontains $required) { throw "Portable package is missing $required" }
@@ -144,18 +148,21 @@ jobs:
             if ($entries | Where-Object { $_ -match 'servers\.local\.json' }) {
               throw 'Portable package contains a local server configuration.'
             }
-            if ($entries | Where-Object { $_ -match '^(keys|exports|backups)/(?!.gitkeep$).+' }) {
+            if ($entries | Where-Object { $_ -match '^(keys|data|exports|backups)/(?!.gitkeep$).+' }) {
               throw 'Portable package contains private runtime data.'
             }
-            if ($entries -contains 'SSH Space.bat') {
+            if ($entries -contains 'agent-ssh.bat') {
               throw 'Portable package still contains the retired BAT launcher.'
+            }
+            if ($entries | Where-Object { $_ -match 'SSH-SPACE|ssh-space' }) {
+              throw 'Portable package still contains a legacy branded path.'
             }
           } finally {
             $archive.Dispose()
           }
 
-          $installRoot = Join-Path $env:RUNNER_TEMP 'ssh-space-install-test'
-          $setup = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP 'agent-ssh-install-test'
+          $setup = Resolve-Path ".\dist\agent-ssh-$env:APP_VERSION-Setup.exe"
           $install = Start-Process -FilePath $setup -ArgumentList @(
             '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', "/DIR=$installRoot"
           ) -Wait -PassThru
@@ -168,12 +175,18 @@ jobs:
           if ($sshVersion -notmatch 'OpenSSH_for_Windows') {
             throw "Installed OpenSSH verification failed: $sshVersion"
           }
-          $installedVersion = (Get-Item -LiteralPath (Join-Path $installRoot 'SSH Space.exe')).VersionInfo.FileVersion
+          $installedVersion = (Get-Item -LiteralPath (Join-Path $installRoot 'agent-ssh.exe')).VersionInfo.FileVersion
           if ($installedVersion -ne "$env:APP_VERSION.0") {
             throw "Installed desktop version is $installedVersion, expected $env:APP_VERSION.0"
           }
           if (Test-Path -LiteralPath (Join-Path $installRoot 'config\servers.local.json')) {
             throw 'Installer unexpectedly created a local server configuration.'
+          }
+          if ($env:APP_VERSION -eq '2.3.0') {
+            $legacySetup = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
+            $newHash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+            $legacyHash = (Get-FileHash -LiteralPath $legacySetup -Algorithm SHA256).Hash
+            if ($newHash -cne $legacyHash) { throw 'Legacy update alias differs from the agent-ssh installer.' }
           }
 
           $uninstaller = Join-Path $installRoot 'unins000.exe'
@@ -185,10 +198,11 @@ jobs:
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SSH-Space-${{ env.APP_VERSION }}-Windows
+          name: agent-ssh-${{ env.APP_VERSION }}-Windows
           path: |
+            dist/agent-ssh-${{ env.APP_VERSION }}-Setup.exe
+            dist/agent-ssh-${{ env.APP_VERSION }}-Portable.zip
             dist/SSH-Space-${{ env.APP_VERSION }}-Setup.exe
-            dist/SSH-Space-${{ env.APP_VERSION }}-Portable.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
@@ -201,10 +215,12 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $files = @(
-            ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe",
-            ".\dist\SSH-Space-$env:APP_VERSION-Portable.zip",
+            ".\dist\agent-ssh-$env:APP_VERSION-Setup.exe",
+            ".\dist\agent-ssh-$env:APP_VERSION-Portable.zip",
             '.\dist\SHA256SUMS.txt'
           )
+          $legacySetup = ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
+          if (Test-Path -LiteralPath $legacySetup) { $files += $legacySetup }
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
             Accept = 'application/vnd.github+json'
@@ -222,5 +238,5 @@ jobs:
             gh release upload $tag @files --clobber --repo $env:GITHUB_REPOSITORY
           } else {
             gh release create $tag @files --verify-tag --generate-notes `
-              --title "SSH Space $env:APP_VERSION" --repo $env:GITHUB_REPOSITORY
+              --title "agent-ssh $env:APP_VERSION" --repo $env:GITHUB_REPOSITORY
           }

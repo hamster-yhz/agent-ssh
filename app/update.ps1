@@ -1,79 +1,79 @@
 Set-StrictMode -Version Latest
 
-$script:SshSpaceRepository = 'hamster-yhz/agent-ssh'
-$script:SshSpaceUpdateCache = $null
-$script:SshSpaceUpdateCacheMinutes = 30
-$script:SshSpaceMaximumInstallerBytes = 209715200
+$script:AgentSshRepository = 'hamster-yhz/agent-ssh'
+$script:AgentSshUpdateCache = $null
+$script:AgentSshUpdateCacheMinutes = 30
+$script:AgentSshMaximumInstallerBytes = 209715200
 
-function ConvertTo-SshSpaceVersion {
+function ConvertTo-AgentSshVersion {
     param([Parameter(Mandatory)][string]$Value)
     $normalized = $Value.Trim().TrimStart('v')
     if ($normalized -notmatch '^\d+\.\d+\.\d+$') {
-        throw "Invalid SSH Space version: $Value"
+        throw "Invalid agent-ssh version: $Value"
     }
     return [Version]$normalized
 }
 
-function Get-SshSpaceApplicationVersion {
+function Get-AgentSshApplicationVersion {
     $versionPath = Join-Path $Root 'VERSION'
     if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) {
-        throw "SSH Space version metadata is missing: $versionPath"
+        throw "agent-ssh version metadata is missing: $versionPath"
     }
     $version = [IO.File]::ReadAllText($versionPath, [Text.Encoding]::UTF8).Trim()
-    [void](ConvertTo-SshSpaceVersion $version)
+    [void](ConvertTo-AgentSshVersion $version)
     return $version
 }
 
-function Invoke-SshSpaceGitHubApi {
+function Invoke-AgentSshGitHubApi {
     param([Parameter(Mandatory)][string]$Uri)
-    if (-not $Uri.StartsWith("https://api.github.com/repos/$script:SshSpaceRepository/", [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $Uri.StartsWith("https://api.github.com/repos/$script:AgentSshRepository/", [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Refusing to query an unexpected update API endpoint.'
     }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     return Invoke-RestMethod -Uri $Uri -Headers @{
         Accept = 'application/vnd.github+json'
-        'User-Agent' = 'SSH-Space-Updater'
+        'User-Agent' = 'agent-ssh-updater'
         'X-GitHub-Api-Version' = '2022-11-28'
     } -TimeoutSec 20
 }
 
-function Assert-SshSpaceAssetUrl {
+function Assert-AgentSshAssetUrl {
     param(
         [Parameter(Mandatory)][string]$Uri,
         [Parameter(Mandatory)][string]$Version,
         [Parameter(Mandatory)][string]$FileName
     )
-    $expected = "https://github.com/$script:SshSpaceRepository/releases/download/v$Version/$FileName"
+    $expected = "https://github.com/$script:AgentSshRepository/releases/download/v$Version/$FileName"
     if (-not [string]::Equals($Uri, $expected, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Release asset URL is not trusted: $FileName"
     }
 }
 
-function Get-SshSpaceLatestRelease {
+function Get-AgentSshLatestRelease {
     param([switch]$Force)
-    if (-not $Force -and $null -ne $script:SshSpaceUpdateCache -and
-        ((Get-Date).ToUniversalTime() - $script:SshSpaceUpdateCache.CheckedAt).TotalMinutes -lt $script:SshSpaceUpdateCacheMinutes) {
-        return $script:SshSpaceUpdateCache.Release
+    if (-not $Force -and $null -ne $script:AgentSshUpdateCache -and
+        ((Get-Date).ToUniversalTime() - $script:AgentSshUpdateCache.CheckedAt).TotalMinutes -lt $script:AgentSshUpdateCacheMinutes) {
+        return $script:AgentSshUpdateCache.Release
     }
 
-    $release = Invoke-SshSpaceGitHubApi "https://api.github.com/repos/$script:SshSpaceRepository/releases/latest"
+    $release = Invoke-AgentSshGitHubApi "https://api.github.com/repos/$script:AgentSshRepository/releases/latest"
     $tag = [string]$release.tag_name
     if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
         throw "The latest GitHub Release has an invalid tag: $tag"
     }
     $version = $Matches.version
-    $setupName = "SSH-Space-$version-Setup.exe"
+    $setupName = "agent-ssh-$version-Setup.exe"
     $checksumName = 'SHA256SUMS.txt'
     $setupAsset = @($release.assets | Where-Object { $_.name -ceq $setupName }) | Select-Object -First 1
     $checksumAsset = @($release.assets | Where-Object { $_.name -ceq $checksumName }) | Select-Object -First 1
     if ($null -eq $setupAsset -or $null -eq $checksumAsset) {
         throw "Release $tag does not contain the required installer and checksum assets."
     }
-    if ([long]$setupAsset.size -le 0 -or [long]$setupAsset.size -gt $script:SshSpaceMaximumInstallerBytes) {
+    if ([long]$setupAsset.size -le 0 -or [long]$setupAsset.size -gt $script:AgentSshMaximumInstallerBytes) {
         throw "Release installer size is outside the allowed range: $($setupAsset.size) bytes"
     }
-    Assert-SshSpaceAssetUrl ([string]$setupAsset.browser_download_url) $version $setupName
-    Assert-SshSpaceAssetUrl ([string]$checksumAsset.browser_download_url) $version $checksumName
+    Assert-AgentSshAssetUrl ([string]$setupAsset.browser_download_url) $version $setupName
+    Assert-AgentSshAssetUrl ([string]$checksumAsset.browser_download_url) $version $checksumName
 
     $result = [pscustomobject][ordered]@{
         version = $version
@@ -88,18 +88,18 @@ function Get-SshSpaceLatestRelease {
         checksumName = $checksumName
         checksumUrl = [string]$checksumAsset.browser_download_url
     }
-    $script:SshSpaceUpdateCache = [pscustomobject]@{
+    $script:AgentSshUpdateCache = [pscustomobject]@{
         CheckedAt = (Get-Date).ToUniversalTime()
         Release = $result
     }
     return $result
 }
 
-function Get-SshSpaceUpdateInfo {
+function Get-AgentSshUpdateInfo {
     param([switch]$Force)
-    $current = Get-SshSpaceApplicationVersion
-    $release = Get-SshSpaceLatestRelease -Force:$Force
-    $available = (ConvertTo-SshSpaceVersion $release.version) -gt (ConvertTo-SshSpaceVersion $current)
+    $current = Get-AgentSshApplicationVersion
+    $release = Get-AgentSshLatestRelease -Force:$Force
+    $available = (ConvertTo-AgentSshVersion $release.version) -gt (ConvertTo-AgentSshVersion $current)
     return [ordered]@{
         currentVersion = $current
         latestVersion = $release.version
@@ -112,7 +112,7 @@ function Get-SshSpaceUpdateInfo {
     }
 }
 
-function Get-SshSpaceExpectedHash {
+function Get-AgentSshExpectedHash {
     param(
         [Parameter(Mandatory)][string]$ChecksumText,
         [Parameter(Mandatory)][string]$FileName
@@ -125,14 +125,14 @@ function Get-SshSpaceExpectedHash {
     throw "SHA256SUMS.txt does not contain a checksum for $FileName."
 }
 
-function Save-SshSpaceReleasePackage {
+function Save-AgentSshReleasePackage {
     param([Parameter(Mandatory)][object]$Release)
     $version = [string]$Release.version
-    [void](ConvertTo-SshSpaceVersion $version)
+    [void](ConvertTo-AgentSshVersion $version)
     $setupName = [string]$Release.setupName
     $checksumName = [string]$Release.checksumName
-    Assert-SshSpaceAssetUrl ([string]$Release.setupUrl) $version $setupName
-    Assert-SshSpaceAssetUrl ([string]$Release.checksumUrl) $version $checksumName
+    Assert-AgentSshAssetUrl ([string]$Release.setupUrl) $version $setupName
+    Assert-AgentSshAssetUrl ([string]$Release.checksumUrl) $version $checksumName
 
     $directory = Join-Path $Root "data\updates\$version"
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
@@ -146,7 +146,7 @@ function Save-SshSpaceReleasePackage {
             throw 'SHA256SUMS.txt is unexpectedly large.'
         }
         $checksumText = [IO.File]::ReadAllText($checksumDownload, [Text.Encoding]::UTF8)
-        $expectedHash = Get-SshSpaceExpectedHash $checksumText $setupName
+        $expectedHash = Get-AgentSshExpectedHash $checksumText $setupName
 
         $reuseExisting = $false
         if (Test-Path -LiteralPath $setupPath -PathType Leaf) {
@@ -156,7 +156,7 @@ function Save-SshSpaceReleasePackage {
         if (-not $reuseExisting) {
             Invoke-WebRequest -UseBasicParsing -Uri ([string]$Release.setupUrl) -OutFile $setupDownload -TimeoutSec 180
             $downloadedFile = Get-Item -LiteralPath $setupDownload
-            if ($downloadedFile.Length -le 0 -or $downloadedFile.Length -gt $script:SshSpaceMaximumInstallerBytes) {
+            if ($downloadedFile.Length -le 0 -or $downloadedFile.Length -gt $script:AgentSshMaximumInstallerBytes) {
                 throw "Downloaded installer size is outside the allowed range: $($downloadedFile.Length) bytes"
             }
             $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setupDownload).Hash.ToLowerInvariant()
@@ -186,18 +186,18 @@ function Save-SshSpaceReleasePackage {
     }
 }
 
-function Save-SshSpaceUpdatePackage {
+function Save-AgentSshUpdatePackage {
     param([Parameter(Mandatory)][string]$Version)
-    $update = Get-SshSpaceUpdateInfo
-    if (-not $update.updateAvailable) { throw 'SSH Space is already up to date.' }
+    $update = Get-AgentSshUpdateInfo
+    if (-not $update.updateAvailable) { throw 'agent-ssh is already up to date.' }
     if ($update.latestVersion -cne $Version) { throw 'The requested update is no longer the latest release.' }
-    $release = Get-SshSpaceLatestRelease
-    return Save-SshSpaceReleasePackage $release
+    $release = Get-AgentSshLatestRelease
+    return Save-AgentSshReleasePackage $release
 }
 
-function Get-VerifiedSshSpaceUpdatePackage {
+function Get-VerifiedAgentSshUpdatePackage {
     param([Parameter(Mandatory)][string]$Version)
-    $release = Get-SshSpaceLatestRelease
+    $release = Get-AgentSshLatestRelease
     if ($release.version -cne $Version) { throw 'The requested update is no longer the latest release.' }
     $directory = Join-Path $Root "data\updates\$Version"
     $setupPath = Join-Path $directory ([string]$release.setupName)
@@ -206,15 +206,15 @@ function Get-VerifiedSshSpaceUpdatePackage {
         throw 'Download and verify the update before installing it.'
     }
     $checksumText = [IO.File]::ReadAllText($checksumPath, [Text.Encoding]::UTF8)
-    $expectedHash = Get-SshSpaceExpectedHash $checksumText ([string]$release.setupName)
+    $expectedHash = Get-AgentSshExpectedHash $checksumText ([string]$release.setupName)
     $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setupPath).Hash.ToLowerInvariant()
     if ($actualHash -cne $expectedHash) { throw 'Cached installer failed SHA-256 verification.' }
     return $setupPath
 }
 
-function Start-SshSpaceUpdateInstaller {
+function Start-AgentSshUpdateInstaller {
     param([Parameter(Mandatory)][string]$Version)
-    $setupPath = Get-VerifiedSshSpaceUpdatePackage $Version
+    $setupPath = Get-VerifiedAgentSshUpdatePackage $Version
     $pathBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($setupPath))
     $launcher = "`$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$pathBase64'));Start-Sleep -Seconds 2;Start-Process -FilePath `$p -ArgumentList @('/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/RESTARTAPPLICATIONS')"
     $encodedLauncher = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launcher))
@@ -224,11 +224,11 @@ function Start-SshSpaceUpdateInstaller {
     return [ordered]@{ ok = $true; version = $Version; launching = $true }
 }
 
-function Open-SshSpaceReleasePage {
+function Open-AgentSshReleasePage {
     param([Parameter(Mandatory)][string]$Version)
-    $release = Get-SshSpaceLatestRelease
+    $release = Get-AgentSshLatestRelease
     if ($release.version -cne $Version) { throw 'The requested release is no longer the latest release.' }
-    $expectedUrl = "https://github.com/$script:SshSpaceRepository/releases/tag/v$Version"
+    $expectedUrl = "https://github.com/$script:AgentSshRepository/releases/tag/v$Version"
     if (-not [string]::Equals([string]$release.releaseUrl, $expectedUrl, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Release page URL is not trusted.'
     }

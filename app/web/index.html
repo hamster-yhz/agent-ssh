@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="api-token" content="__API_TOKEN__">
   <meta name="theme-color" content="#070908">
-  <title>SSH Space</title>
+  <title>agent-ssh</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
 
   <div class="app-shell">
     <nav class="rail" aria-label="主导航">
-      <button class="brand-mark" title="SSH Space" aria-label="SSH Space"><span>S</span><i>/</i></button>
+      <button class="brand-mark" title="agent-ssh" aria-label="agent-ssh"><span>A</span><i>/</i></button>
       <div class="rail-cluster">
         <button class="rail-button active" title="服务器" aria-label="服务器"><span>⌘</span><small>01</small></button>
         <button class="rail-button" data-action="import" title="导入" aria-label="导入"><span>⇣</span><small>02</small></button>
@@ -29,7 +29,7 @@
 
     <aside class="server-index">
       <header class="index-header">
-        <div class="wordmark"><span class="wordmark-dot"></span><strong>SSH SPACE</strong><small>CONTROL PLANE</small></div>
+        <div class="wordmark"><span class="wordmark-dot"></span><strong>agent-ssh</strong><small>CONTROL PLANE</small></div>
         <span class="live-indicator"><i></i>OPENSSH</span>
       </header>
 
@@ -128,7 +128,7 @@
         </section>
       </section>
 
-      <footer class="deck-footer"><span>LOCAL CONTROL PLANE</span><i></i><span id="footer-runtime">RUNTIME READY</span><b>SSH SPACE / 2026</b></footer>
+      <footer class="deck-footer"><span>LOCAL CONTROL PLANE</span><i></i><span id="footer-runtime">RUNTIME READY</span><b>agent-ssh / 2026</b></footer>
     </main>
   </div>
 
@@ -186,7 +186,7 @@
     <form method="dialog" id="reset-form" class="sheet-content">
       <header class="sheet-header"><div><p class="eyebrow danger-text">DESTRUCTIVE ACTION</p><h2>恢复出厂设置</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
       <div class="reset-warning"><strong>服务器配置、工作区密钥和主机指纹将被重置。</strong><p>执行前会创建可恢复备份；历史导出包不会被修改。</p></div>
-      <label class="confirm-field"><span>输入 RESET SSH SPACE 确认</span><input id="reset-confirmation" autocomplete="off" spellcheck="false" placeholder="RESET SSH SPACE"></label>
+      <label class="confirm-field"><span>输入 RESET agent-ssh 确认</span><input id="reset-confirmation" autocomplete="off" spellcheck="false" placeholder="RESET agent-ssh"></label>
       <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button danger-solid" id="reset-submit" disabled>恢复默认配置</button></footer>
     </form>
   </dialog>
@@ -233,7 +233,7 @@
   <dialog id="update-install-dialog" class="sheet-dialog confirm-dialog">
     <form method="dialog" id="update-install-form" class="sheet-content">
       <header class="sheet-header"><div><p class="eyebrow">VERIFIED INSTALLER</p><h2>确认安装更新</h2></div><button type="button" class="icon-button" data-close-dialog title="关闭" aria-label="关闭">×</button></header>
-      <div class="reset-warning update-install-warning"><strong>即将安装 SSH Space <span id="update-install-version">—</span>。</strong><p>应用会暂时关闭，并在安装完成后重新打开。更新只替换程序文件，不会覆盖服务器配置、密钥、导出包或备份。</p></div>
+      <div class="reset-warning update-install-warning"><strong>即将安装 agent-ssh <span id="update-install-version">—</span>。</strong><p>应用会暂时关闭，并在安装完成后重新打开。更新只替换程序文件，不会覆盖服务器配置、密钥、导出包或备份。</p></div>
       <footer class="sheet-footer"><button type="button" class="command-button" data-close-dialog>取消</button><button type="submit" class="command-button primary" id="update-install-confirm"><span class="button-label">确认并安装</span></button></footer>
     </form>
   </dialog>

@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $AppRoot = $PSScriptRoot
 $Root = Split-Path -Parent $AppRoot
 $WebRoot = Join-Path $AppRoot 'web'
-. (Join-Path $Root 'ssh.ps1')
+. (Join-Path $Root 'agent-ssh.ps1')
 
 $PowerShellExecutable = if ($PSVersionTable.PSEdition -eq 'Core') {
     Join-Path $PSHOME 'pwsh.exe'
@@ -24,7 +24,7 @@ if (-not (Test-Path -LiteralPath $PowerShellExecutable -PathType Leaf)) {
 $PowerShellRuntimeEdition = [string]$PSVersionTable.PSEdition
 $PowerShellRuntimeVersion = $PSVersionTable.PSVersion.ToString()
 . (Join-Path $AppRoot 'update.ps1')
-$ApplicationVersion = Get-SshSpaceApplicationVersion
+$ApplicationVersion = Get-AgentSshApplicationVersion
 
 function New-ApiToken {
     $bytes = New-Object byte[] 32
@@ -75,7 +75,7 @@ function Read-RequestJson {
 function Get-PublicState {
     $runtime = Get-OpenSshStatus
     try {
-        $config = Read-SshSpaceConfig
+        $config = Read-AgentSshConfig
     } catch {
         return [ordered]@{
             servers = @()
@@ -137,7 +137,7 @@ function Get-PublicState {
 
 function Save-ServerFromRequest {
     param([Parameter(Mandatory)][object]$Body)
-    $config = Read-SshSpaceConfig
+    $config = Read-AgentSshConfig
     $alias = [string](Get-ObjectValue $Body 'alias' '')
     $originalAlias = [string](Get-ObjectValue $Body 'originalAlias' '')
     if (-not (Test-ServerAlias $alias)) { throw 'Alias must use 1-64 Unicode letters, numbers, dots, underscores, or hyphens.' }
@@ -173,19 +173,19 @@ function Save-ServerFromRequest {
 
     if ($originalAlias) { $config.servers.PSObject.Properties.Remove($originalAlias) }
     $config.servers | Add-Member -MemberType NoteProperty -Name $alias -Value $server
-    Save-SshSpaceConfig $config
-    Disconnect-SshSpaceSessionsIfRunning @($originalAlias, $alias)
+    Save-AgentSshConfig $config
+    Disconnect-AgentSshSessionsIfRunning @($originalAlias, $alias)
     return $alias
 }
 
 function Remove-ServerFromRequest {
     param([Parameter(Mandatory)][object]$Body)
     $alias = [string](Get-ObjectValue $Body 'alias' '')
-    $config = Read-SshSpaceConfig
+    $config = Read-AgentSshConfig
     [void](Get-ServerEntry $config $alias)
     $config.servers.PSObject.Properties.Remove($alias)
-    Save-SshSpaceConfig $config
-    Disconnect-SshSpaceSessionsIfRunning @($alias)
+    Save-AgentSshConfig $config
+    Disconnect-AgentSshSessionsIfRunning @($alias)
 }
 
 function Save-UploadedKey {
@@ -222,7 +222,7 @@ function Import-UploadedPackages {
             New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
             [IO.File]::WriteAllBytes($destination, $bytes)
         }
-        $config = Read-SshSpaceConfig
+        $config = Read-AgentSshConfig
         return @(Import-SshServerPackages $config @($stagingRoot))
     } finally {
         if (Test-Path -LiteralPath $stagingRoot) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force }
@@ -236,7 +236,7 @@ function ConvertTo-EncodedPowerShell {
 
 function Get-ChildPowerShellCode {
     param([Parameter(Mandatory)][string]$Alias, [string]$Command)
-    $scriptB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Join-Path $Root 'ssh.ps1')))
+    $scriptB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Join-Path $Root 'agent-ssh.ps1')))
     $aliasB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Alias))
     $commandB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$Command))
     return "`$ProgressPreference='SilentlyContinue';`$s=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$scriptB64'));`$a=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$aliasB64'));`$c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$commandB64'));if(`$c){& `$s `$a `$c}else{& `$s `$a};exit `$LASTEXITCODE"
@@ -244,7 +244,7 @@ function Get-ChildPowerShellCode {
 
 function Open-ServerTerminal {
     param([Parameter(Mandatory)][string]$Alias)
-    $config = Read-SshSpaceConfig
+    $config = Read-AgentSshConfig
     [void](Get-ServerSettings $config (Get-ServerEntry $config $Alias))
     $encoded = ConvertTo-EncodedPowerShell (Get-ChildPowerShellCode $Alias '')
     $process = Start-Process -FilePath $PowerShellExecutable -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -PassThru
@@ -256,7 +256,7 @@ function Open-ServerTerminal {
 function Invoke-RemoteCommandProcess {
     param([Parameter(Mandatory)][string]$Alias, [Parameter(Mandatory)][string]$Command)
     if ([string]::IsNullOrWhiteSpace($Command)) { throw 'Remote command cannot be empty.' }
-    return Invoke-SshSpaceSessionCommand $Alias $Command 120
+    return Invoke-AgentSshSessionCommand $Alias $Command 120
 }
 
 function Get-ContentType {
@@ -299,7 +299,7 @@ while ($selectedPort -le [Math]::Min(65535, $Port + 20)) {
 }
 if (-not $listener.IsListening) { throw "Could not start a local server on ports $Port-$selectedPort." }
 
-Write-Host "SSH Space is running at $prefix" -ForegroundColor Cyan
+Write-Host "agent-ssh is running at $prefix" -ForegroundColor Cyan
 Write-Host 'Press Ctrl+C to stop.' -ForegroundColor DarkGray
 if (-not $NoBrowser) { Start-Process $prefix | Out-Null }
 
@@ -313,7 +313,7 @@ try {
                 Send-StaticFile $context $path $apiToken
                 continue
             }
-            if ($request.Headers['X-SSH-Space-Token'] -cne $apiToken) {
+            if ($request.Headers['X-Agent-Ssh-Token'] -cne $apiToken) {
                 Send-Json $context @{ error = 'Unauthorized.' } 403
                 continue
             }
@@ -322,21 +322,21 @@ try {
                 'GET /api/state' { Send-Json $context (Get-PublicState) }
                 'GET /api/update/check' {
                     $force = $request.QueryString['force'] -eq '1'
-                    Send-Json $context (Get-SshSpaceUpdateInfo -Force:$force)
+                    Send-Json $context (Get-AgentSshUpdateInfo -Force:$force)
                 }
                 'POST /api/update/download' {
                     $body = Read-RequestJson $request
-                    $result = Save-SshSpaceUpdatePackage ([string](Get-ObjectValue $body 'version' ''))
+                    $result = Save-AgentSshUpdatePackage ([string](Get-ObjectValue $body 'version' ''))
                     Send-Json $context $result
                 }
                 'POST /api/update/install' {
                     $body = Read-RequestJson $request
-                    $result = Start-SshSpaceUpdateInstaller ([string](Get-ObjectValue $body 'version' ''))
+                    $result = Start-AgentSshUpdateInstaller ([string](Get-ObjectValue $body 'version' ''))
                     Send-Json $context $result
                 }
                 'POST /api/update/release/open' {
                     $body = Read-RequestJson $request
-                    Open-SshSpaceReleasePage ([string](Get-ObjectValue $body 'version' ''))
+                    Open-AgentSshReleasePage ([string](Get-ObjectValue $body 'version' ''))
                     Send-Json $context @{ ok = $true }
                 }
                 'POST /api/server/save' {
@@ -349,8 +349,8 @@ try {
                 }
                 'POST /api/factory-reset' {
                     $body = Read-RequestJson $request
-                    $backup = Reset-SshSpaceFactoryDefaults ([string](Get-ObjectValue $body 'confirmation' ''))
-                    Disconnect-SshSpaceSessionsIfRunning @()
+                    $backup = Reset-AgentSshFactoryDefaults ([string](Get-ObjectValue $body 'confirmation' ''))
+                    Disconnect-AgentSshSessionsIfRunning @()
                     Send-Json $context @{ ok = $true; backup = $backup }
                 }
                 'POST /api/key/upload' {
@@ -363,15 +363,15 @@ try {
                 }
                 'GET /api/session/status' {
                     $alias = [string]$request.QueryString['alias']
-                    Send-Json $context (Get-SshSpaceSessionStatus $alias)
+                    Send-Json $context (Get-AgentSshSessionStatus $alias)
                 }
                 'POST /api/session/connect' {
                     $body = Read-RequestJson $request
-                    Send-Json $context (Connect-SshSpaceSession ([string](Get-ObjectValue $body 'alias' '')))
+                    Send-Json $context (Connect-AgentSshSession ([string](Get-ObjectValue $body 'alias' '')))
                 }
                 'POST /api/session/disconnect' {
                     $body = Read-RequestJson $request
-                    Send-Json $context (Disconnect-SshSpaceSession ([string](Get-ObjectValue $body 'alias' '')))
+                    Send-Json $context (Disconnect-AgentSshSession ([string](Get-ObjectValue $body 'alias' '')))
                 }
                 'POST /api/command/run' {
                     $body = Read-RequestJson $request
@@ -381,7 +381,7 @@ try {
                 'POST /api/export' {
                     $body = Read-RequestJson $request
                     $aliases = @((Get-ObjectValue $body 'aliases' @()) | ForEach-Object { [string]$_ })
-                    $config = Read-SshSpaceConfig
+                    $config = Read-AgentSshConfig
                     $result = Export-SshServerPackages $config $aliases ''
                     Send-Json $context @{ ok = $true; directory = $result.Directory; count = $result.Packages.Count }
                 }

@@ -1,12 +1,12 @@
 Set-StrictMode -Version Latest
 
-$script:SshSpaceSessionDescriptorPath = Join-Path $WorkspaceRoot 'data\session-host.json'
-$script:SshSpaceSessionHostScript = Join-Path $WorkspaceRoot 'app\session-host.ps1'
+$script:AgentSshSessionDescriptorPath = Join-Path $WorkspaceRoot 'data\session-host.json'
+$script:AgentSshSessionHostScript = Join-Path $WorkspaceRoot 'app\session-host.ps1'
 
-function Get-SshSpaceSessionDescriptor {
-    if (-not (Test-Path -LiteralPath $script:SshSpaceSessionDescriptorPath -PathType Leaf)) { return $null }
+function Get-AgentSshSessionDescriptor {
+    if (-not (Test-Path -LiteralPath $script:AgentSshSessionDescriptorPath -PathType Leaf)) { return $null }
     try {
-        $descriptor = [IO.File]::ReadAllText($script:SshSpaceSessionDescriptorPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $descriptor = [IO.File]::ReadAllText($script:AgentSshSessionDescriptorPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
         $root = [IO.Path]::GetFullPath([string](Get-ObjectValue $descriptor 'root' ''))
         if (-not [string]::Equals($root.TrimEnd('\'), ([IO.Path]::GetFullPath($WorkspaceRoot)).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) { return $null }
         $port = [int](Get-ObjectValue $descriptor 'port' 0)
@@ -21,7 +21,7 @@ function Get-SshSpaceSessionDescriptor {
     }
 }
 
-function Get-SshSpaceSessionApiError {
+function Get-AgentSshSessionApiError {
     param([Parameter(Mandatory)][object]$ErrorRecord)
     try {
         $detail = [string]$ErrorRecord.ErrorDetails.Message
@@ -49,7 +49,7 @@ function Get-SshSpaceSessionApiError {
     return [string]$ErrorRecord.Exception.Message
 }
 
-function Invoke-SshSpaceSessionApi {
+function Invoke-AgentSshSessionApi {
     param(
         [Parameter(Mandatory)][object]$Descriptor,
         [Parameter(Mandatory)][ValidateSet('GET', 'POST')][string]$Method,
@@ -61,7 +61,7 @@ function Invoke-SshSpaceSessionApi {
     $parameters = @{
         Uri = $uri
         Method = $Method
-        Headers = @{ 'X-SSH-Space-Session-Token' = $Descriptor.Token }
+        Headers = @{ 'X-Agent-Ssh-Session-Token' = $Descriptor.Token }
         TimeoutSec = $TimeoutSeconds
         UseBasicParsing = $true
     }
@@ -72,102 +72,101 @@ function Invoke-SshSpaceSessionApi {
     try {
         return Invoke-RestMethod @parameters
     } catch {
-        throw (Get-SshSpaceSessionApiError $_)
+        throw (Get-AgentSshSessionApiError $_)
     }
 }
 
-function Test-SshSpaceSessionHost {
+function Test-AgentSshSessionHost {
     param([AllowNull()][object]$Descriptor)
     if ($null -eq $Descriptor) { return $false }
     try {
-        $health = Invoke-SshSpaceSessionApi $Descriptor 'GET' '/health' $null 2
+        $health = Invoke-AgentSshSessionApi $Descriptor 'GET' '/health' $null 2
         return [bool](Get-ObjectValue $health 'ok' $false)
     } catch { return $false }
 }
 
-function Ensure-SshSpaceSessionHost {
-    $descriptor = Get-SshSpaceSessionDescriptor
-    if (Test-SshSpaceSessionHost $descriptor) { return $descriptor }
-    if (-not (Test-Path -LiteralPath $script:SshSpaceSessionHostScript -PathType Leaf)) {
-        throw "SSH Space session host is missing: $script:SshSpaceSessionHostScript"
+function Ensure-AgentSshSessionHost {
+    $descriptor = Get-AgentSshSessionDescriptor
+    if (Test-AgentSshSessionHost $descriptor) { return $descriptor }
+    if (-not (Test-Path -LiteralPath $script:AgentSshSessionHostScript -PathType Leaf)) {
+        throw "agent-ssh session host is missing: $script:AgentSshSessionHostScript"
     }
 
     $powerShellExecutable = if ($PSVersionTable.PSEdition -eq 'Core') { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
     if (-not (Test-Path -LiteralPath $powerShellExecutable -PathType Leaf)) { throw 'The active PowerShell executable is unavailable.' }
-    $scriptPathBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script:SshSpaceSessionHostScript))
-    $launcher = "`$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$scriptPathBase64'));& `$p"
-    $encodedLauncher = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launcher))
+    if ($script:AgentSshSessionHostScript.Contains('"')) { throw 'The session host path contains an unsupported quote character.' }
+    $quotedScript = '"' + $script:AgentSshSessionHostScript + '"'
     Start-Process -FilePath $powerShellExecutable -ArgumentList @(
-        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encodedLauncher
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $quotedScript
     ) -WindowStyle Hidden | Out-Null
 
     foreach ($attempt in 1..60) {
         Start-Sleep -Milliseconds 200
-        $descriptor = Get-SshSpaceSessionDescriptor
-        if (Test-SshSpaceSessionHost $descriptor) { return $descriptor }
+        $descriptor = Get-AgentSshSessionDescriptor
+        if (Test-AgentSshSessionHost $descriptor) { return $descriptor }
     }
     throw 'The local SSH session host did not become ready within 12 seconds.'
 }
 
-function Invoke-SshSpaceSessionRequest {
+function Invoke-AgentSshSessionRequest {
     param(
         [Parameter(Mandatory)][ValidateSet('GET', 'POST')][string]$Method,
         [Parameter(Mandatory)][string]$Path,
         [AllowNull()][object]$Body,
         [ValidateRange(1, 180)][int]$TimeoutSeconds = 15
     )
-    $descriptor = Ensure-SshSpaceSessionHost
-    return Invoke-SshSpaceSessionApi $descriptor $Method $Path $Body $TimeoutSeconds
+    $descriptor = Ensure-AgentSshSessionHost
+    return Invoke-AgentSshSessionApi $descriptor $Method $Path $Body $TimeoutSeconds
 }
 
-function Connect-SshSpaceSession {
+function Connect-AgentSshSession {
     param([Parameter(Mandatory)][string]$Alias)
-    return Invoke-SshSpaceSessionRequest 'POST' '/connect' @{ alias = $Alias } 45
+    return Invoke-AgentSshSessionRequest 'POST' '/connect' @{ alias = $Alias } 45
 }
 
-function Get-SshSpaceSessionStatus {
+function Get-AgentSshSessionStatus {
     param([string]$Alias)
     $path = if ([string]::IsNullOrWhiteSpace($Alias)) { '/status' } else { "/status?alias=$([Uri]::EscapeDataString($Alias))" }
-    return Invoke-SshSpaceSessionRequest 'GET' $path $null 5
+    return Invoke-AgentSshSessionRequest 'GET' $path $null 5
 }
 
-function Disconnect-SshSpaceSession {
+function Disconnect-AgentSshSession {
     param([Parameter(Mandatory)][string]$Alias)
-    return Invoke-SshSpaceSessionRequest 'POST' '/disconnect' @{ alias = $Alias } 10
+    return Invoke-AgentSshSessionRequest 'POST' '/disconnect' @{ alias = $Alias } 10
 }
 
-function Disconnect-SshSpaceSessionsIfRunning {
+function Disconnect-AgentSshSessionsIfRunning {
     param([string[]]$Aliases)
-    $descriptor = Get-SshSpaceSessionDescriptor
-    if (-not (Test-SshSpaceSessionHost $descriptor)) { return }
+    $descriptor = Get-AgentSshSessionDescriptor
+    if (-not (Test-AgentSshSessionHost $descriptor)) { return }
     try {
         if ($null -eq $Aliases -or $Aliases.Count -eq 0) {
-            [void](Invoke-SshSpaceSessionApi $descriptor 'POST' '/disconnect-all' @{} 10)
+            [void](Invoke-AgentSshSessionApi $descriptor 'POST' '/disconnect-all' @{} 10)
         } else {
             foreach ($alias in @($Aliases | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
-                [void](Invoke-SshSpaceSessionApi $descriptor 'POST' '/disconnect' @{ alias = $alias } 10)
+                [void](Invoke-AgentSshSessionApi $descriptor 'POST' '/disconnect' @{ alias = $alias } 10)
             }
         }
     } catch {}
 }
 
-function Stop-SshSpaceSessionHostIfIdle {
-    $descriptor = Get-SshSpaceSessionDescriptor
-    if (-not (Test-SshSpaceSessionHost $descriptor)) { return $true }
+function Stop-AgentSshSessionHostIfIdle {
+    $descriptor = Get-AgentSshSessionDescriptor
+    if (-not (Test-AgentSshSessionHost $descriptor)) { return $true }
     try {
-        $result = Invoke-SshSpaceSessionApi $descriptor 'POST' '/shutdown' @{} 5
+        $result = Invoke-AgentSshSessionApi $descriptor 'POST' '/shutdown' @{} 5
         return [bool](Get-ObjectValue $result 'ok' $false)
     } catch { return $false }
 }
 
-function Invoke-SshSpaceSessionCommand {
+function Invoke-AgentSshSessionCommand {
     param(
         [Parameter(Mandatory)][string]$Alias,
         [Parameter(Mandatory)][string]$Command,
         [ValidateRange(1, 120)][int]$TimeoutSeconds = 120
     )
     if ([string]::IsNullOrWhiteSpace($Command)) { throw 'Remote command cannot be empty.' }
-    return Invoke-SshSpaceSessionRequest 'POST' '/execute' @{
+    return Invoke-AgentSshSessionRequest 'POST' '/execute' @{
         alias = $Alias
         command = $Command
         timeoutSeconds = $TimeoutSeconds

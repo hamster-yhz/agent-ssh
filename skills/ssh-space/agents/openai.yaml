@@ -1,4 +1,0 @@
-interface:
-  display_name: "SSH Space"
-  short_description: "Safely operate SSH Space servers and packages"
-  default_prompt: "Use $ssh-space to inspect my configured servers and safely run the requested SSH operation."

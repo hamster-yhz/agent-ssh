@@ -16,7 +16,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid release version: $Version" }
 $buildRoot = Join-Path $root 'build\release'
-$stage = Join-Path $buildRoot 'SSH Space'
+$stage = Join-Path $buildRoot 'agent-ssh'
 $dist = Join-Path $root 'dist'
 $stagePrefix = [IO.Path]::GetFullPath($buildRoot).TrimEnd('\') + '\'
 if (-not ([IO.Path]::GetFullPath($stage)).StartsWith($stagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
@@ -25,13 +25,13 @@ if (-not ([IO.Path]::GetFullPath($stage)).StartsWith($stagePrefix, [StringCompar
 
 & (Join-Path $PSScriptRoot 'get-openssh.ps1')
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
-$releaseExecutable = Join-Path $buildRoot 'SSH Space.exe'
-$rootExecutable = Join-Path $root 'SSH Space.exe'
+$releaseExecutable = Join-Path $buildRoot 'agent-ssh.exe'
+$rootExecutable = Join-Path $root 'agent-ssh.exe'
 $rootExecutableVersion = if (Test-Path -LiteralPath $rootExecutable -PathType Leaf) {
     (Get-Item -LiteralPath $rootExecutable).VersionInfo.FileVersion
 } else { '' }
 if ($RebuildDesktop -or $rootExecutableVersion -ne "$Version.0") {
-    & (Join-Path $PSScriptRoot 'build-desktop.ps1') -OutputPath 'build\release\SSH Space.exe' -Version $Version
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1') -OutputPath 'build\release\agent-ssh.exe' -Version $Version
 } else {
     Copy-Item -LiteralPath $rootExecutable -Destination $releaseExecutable -Force
 }
@@ -40,11 +40,12 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 New-Item -ItemType Directory -Path $stage, $dist -Force | Out-Null
 
 Copy-Item -LiteralPath $releaseExecutable -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'agent-ssh.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'ssh.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $stage
 [IO.File]::WriteAllText((Join-Path $stage 'VERSION'), $Version, (New-Object Text.UTF8Encoding($false)))
-Copy-Item -LiteralPath (Join-Path $root 'src\desktop\SshSpace.ico') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'src\desktop\agent-ssh.ico') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'app') -Destination $stage -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'runtime') -Destination $stage -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'skills') -Destination $stage -Recurse
@@ -59,11 +60,12 @@ foreach ($directory in @('keys', 'data', 'exports', 'backups')) {
     Copy-Item -LiteralPath (Join-Path $root "$directory\.gitkeep") -Destination (Join-Path $stage $directory)
 }
 
-$portable = Join-Path $dist "SSH-Space-$Version-Portable.zip"
+$portable = Join-Path $dist "agent-ssh-$Version-Portable.zip"
 if (Test-Path -LiteralPath $portable) { Remove-Item -LiteralPath $portable -Force }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $portable -CompressionLevel Optimal
 
 $installer = $null
+$legacyInstaller = $null
 if (-not $SkipInstaller) {
     $iscc = @(
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
@@ -73,13 +75,20 @@ if (-not $SkipInstaller) {
     if (-not $iscc) {
         throw 'Inno Setup 6 is required to build the installer. Install it or use -SkipInstaller.'
     }
-    & $iscc "/DSourceDir=$stage" "/DOutputDir=$dist" "/DAppVersion=$Version" (Join-Path $root 'installer\SSH Space.iss')
+    & $iscc "/DSourceDir=$stage" "/DOutputDir=$dist" "/DAppVersion=$Version" (Join-Path $root 'installer\agent-ssh.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed to build the installer.' }
-    $installer = Join-Path $dist "SSH-Space-$Version-Setup.exe"
+    $installer = Join-Path $dist "agent-ssh-$Version-Setup.exe"
+    if ($Version -eq '2.3.0') {
+        # v2.2.x looks for the former asset name. Publish one transition alias
+        # so those clients can upgrade into the new naming scheme.
+        $legacyInstaller = Join-Path $dist "SSH-Space-$Version-Setup.exe"
+        Copy-Item -LiteralPath $installer -Destination $legacyInstaller -Force
+    }
 }
 
 $artifacts = @($portable)
 if ($installer) { $artifacts += $installer }
+if ($legacyInstaller) { $artifacts += $legacyInstaller }
 $checksums = foreach ($artifact in $artifacts) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
     "$hash  $([IO.Path]::GetFileName($artifact))"

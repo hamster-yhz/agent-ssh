@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
-. (Join-Path $Root 'ssh.ps1')
+. (Join-Path $Root 'agent-ssh.ps1')
 
 $script:Sessions = @{}
 $script:LastHostActivityUtc = [DateTime]::UtcNow
@@ -28,7 +28,7 @@ function New-SessionToken {
 
 function Get-SessionSettings {
     param([Parameter(Mandatory)][string]$Alias)
-    $config = Read-SshSpaceConfig
+    $config = Read-AgentSshConfig
     return Get-ServerSettings $config (Get-ServerEntry $config $Alias)
 }
 
@@ -126,8 +126,8 @@ function Start-PersistentSession {
     if (-not [string]::IsNullOrEmpty($Settings.Password)) {
         $info.EnvironmentVariables['SSH_ASKPASS'] = $AskPassExePath
         $info.EnvironmentVariables['SSH_ASKPASS_REQUIRE'] = 'force'
-        $info.EnvironmentVariables['DISPLAY'] = 'ssh-space'
-        $info.EnvironmentVariables['SSH_SPACE_PASSWORD'] = $Settings.Password
+        $info.EnvironmentVariables['DISPLAY'] = 'agent-ssh'
+        $info.EnvironmentVariables['AGENT_SSH_PASSWORD'] = $Settings.Password
     }
 
     $process = New-Object Diagnostics.Process
@@ -144,7 +144,7 @@ function Start-PersistentSession {
         Busy = $false
     }
     try {
-        $readyMarker = "__SSH_SPACE_READY_$([Guid]::NewGuid().ToString('N'))__"
+        $readyMarker = "__AGENT_SSH_READY_$([Guid]::NewGuid().ToString('N'))__"
         $process.StandardInput.WriteLine("printf '%s\n' '$readyMarker'")
         $watch = [Diagnostics.Stopwatch]::StartNew()
         $timeout = ([int]$Settings.ConnectTimeout + 15) * 1000
@@ -213,10 +213,10 @@ function Invoke-PersistentCommand {
     $session.LastUsedUtc = [DateTime]::UtcNow
     try {
         $id = [Guid]::NewGuid().ToString('N')
-        $delimiter = "__SSH_SPACE_COMMAND_${id}__"
-        while ($Command.Contains($delimiter)) { $id = [Guid]::NewGuid().ToString('N'); $delimiter = "__SSH_SPACE_COMMAND_${id}__" }
-        $beginMarker = "__SSH_SPACE_BEGIN_${id}__"
-        $endMarker = "__SSH_SPACE_END_${id}__"
+        $delimiter = "__AGENT_SSH_COMMAND_${id}__"
+        while ($Command.Contains($delimiter)) { $id = [Guid]::NewGuid().ToString('N'); $delimiter = "__AGENT_SSH_COMMAND_${id}__" }
+        $beginMarker = "__AGENT_SSH_BEGIN_${id}__"
+        $endMarker = "__AGENT_SSH_END_${id}__"
         $payload = @(
             "printf '%s\n' '$beginMarker'",
             'set +e',
@@ -224,8 +224,8 @@ function Invoke-PersistentCommand {
             $Command,
             $delimiter,
             ')" 2>&1',
-            '__ssh_space_code=$?',
-            "printf '\n%s:%s\n' '$endMarker' `"`$__ssh_space_code`""
+            '__agent_ssh_code=$?',
+            "printf '\n%s:%s\n' '$endMarker' `"`$__agent_ssh_code`""
         ) -join "`n"
         $session.Process.StandardInput.WriteLine($payload)
 
@@ -293,18 +293,25 @@ $rootBytes = [Text.Encoding]::UTF8.GetBytes(([IO.Path]::GetFullPath($Root)).ToLo
 $sha256 = [Security.Cryptography.SHA256]::Create()
 try { $rootHash = ([BitConverter]::ToString($sha256.ComputeHash($rootBytes))).Replace('-', '').Substring(0, 20) } finally { $sha256.Dispose() }
 $createdNew = $false
-$hostMutex = New-Object Threading.Mutex($true, "Local\SSHSpaceSessionHost_$rootHash", [ref]$createdNew)
+$hostMutex = New-Object Threading.Mutex($true, "Local\AgentSshSessionHost_$rootHash", [ref]$createdNew)
 if (-not $createdNew) { $hostMutex.Dispose(); exit 0 }
 
 $apiToken = New-SessionToken
-$listener = New-Object Net.HttpListener
+$listener = $null
 $selectedPort = $Port
 while ($selectedPort -le [Math]::Min(65535, $Port + 20)) {
-    $listener.Prefixes.Clear()
-    $listener.Prefixes.Add("http://127.0.0.1:$selectedPort/")
-    try { $listener.Start(); break } catch { $selectedPort++ }
+    $candidateListener = New-Object Net.HttpListener
+    $candidateListener.Prefixes.Add("http://127.0.0.1:$selectedPort/")
+    try {
+        $candidateListener.Start()
+        $listener = $candidateListener
+        break
+    } catch {
+        try { $candidateListener.Close() } catch {}
+        $selectedPort++
+    }
 }
-if (-not $listener.IsListening) { $hostMutex.ReleaseMutex(); $hostMutex.Dispose(); throw 'Could not start the local SSH session host.' }
+if ($null -eq $listener -or -not $listener.IsListening) { $hostMutex.ReleaseMutex(); $hostMutex.Dispose(); throw 'Could not start the local SSH session host.' }
 
 New-Item -ItemType Directory -Path (Split-Path -Parent $descriptorPath) -Force | Out-Null
 $descriptor = [ordered]@{ pid = $PID; port = $selectedPort; token = $apiToken; root = [IO.Path]::GetFullPath($Root); startedAt = [DateTime]::UtcNow.ToString('o') }
@@ -325,7 +332,7 @@ try {
         $script:LastHostActivityUtc = [DateTime]::UtcNow
         try {
             $request = $context.Request
-            if ($request.Headers['X-SSH-Space-Session-Token'] -cne $apiToken) { Send-SessionJson $context @{ error = 'Unauthorized.' } 403; continue }
+            if ($request.Headers['X-Agent-Ssh-Session-Token'] -cne $apiToken) { Send-SessionJson $context @{ error = 'Unauthorized.' } 403; continue }
             $path = $request.Url.AbsolutePath
             switch ("$($request.HttpMethod) $path") {
                 'GET /health' { Send-SessionJson $context @{ ok = $true; pid = $PID; idleTimeoutSeconds = $IdleTimeoutSeconds } }

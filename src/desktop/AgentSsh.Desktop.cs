@@ -12,9 +12,9 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-[assembly: AssemblyTitle("SSH Space")]
-[assembly: AssemblyDescription("SSH Space desktop control plane")]
-[assembly: AssemblyProduct("SSH Space Desktop")]
+[assembly: AssemblyTitle("agent-ssh")]
+[assembly: AssemblyDescription("agent-ssh desktop control plane")]
+[assembly: AssemblyProduct("agent-ssh Desktop")]
 [assembly: AssemblyVersion("2.0.0.0")]
 [assembly: AssemblyFileVersion("2.0.0.0")]
 
@@ -37,10 +37,12 @@ internal static class Program
     {
         ConfigureDpiAwareness();
         bool createdNew;
+        // Retain the original mutex identity so v2.2 and v2.3 cannot run side by side
+        // during an in-place rename upgrade.
         instanceMutex = new Mutex(true, @"Local\SSHSpaceDesktop", out createdNew);
         if (!createdNew)
         {
-            MessageBox.Show("SSH Space desktop is already running.", "SSH Space",
+            MessageBox.Show("agent-ssh desktop is already running.", "agent-ssh",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
@@ -50,13 +52,13 @@ internal static class Program
             string root = AppDomain.CurrentDomain.BaseDirectory;
             try
             {
-                string previousBuild = Path.Combine(root, "build", "SSH Space.previous.exe");
+                string previousBuild = Path.Combine(root, "build", "agent-ssh.previous.exe");
                 if (File.Exists(previousBuild)) File.Delete(previousBuild);
             }
             catch { }
             if (!File.Exists(Path.Combine(root, "app", "server.ps1")))
             {
-                throw new FileNotFoundException("app\\server.ps1 is missing from the SSH Space application directory.");
+                throw new FileNotFoundException("app\\server.ps1 is missing from the agent-ssh application directory.");
             }
 
             string runtimeDirectory = RuntimeBundle.Extract(RuntimeVersion);
@@ -70,12 +72,12 @@ internal static class Program
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new SshSpaceWindow(root));
+            Application.Run(new AgentSshWindow(root));
             return 0;
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "SSH Space",
+            MessageBox.Show(exception.Message, "agent-ssh",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
@@ -102,17 +104,17 @@ internal static class Program
 
 internal static class RuntimeBundle
 {
-    private const string CoreResource = "SshSpace.Resources.WebView2.Core";
-    private const string WinFormsResource = "SshSpace.Resources.WebView2.WinForms";
-    private const string LoaderX64Resource = "SshSpace.Resources.WebView2.Loader.x64";
-    private const string LoaderX86Resource = "SshSpace.Resources.WebView2.Loader.x86";
+    private const string CoreResource = "AgentSsh.Resources.WebView2.Core";
+    private const string WinFormsResource = "AgentSsh.Resources.WebView2.WinForms";
+    private const string LoaderX64Resource = "AgentSsh.Resources.WebView2.Loader.x64";
+    private const string LoaderX86Resource = "AgentSsh.Resources.WebView2.Loader.x86";
 
     internal static string Extract(string version)
     {
         string architecture = Environment.Is64BitProcess ? "x64" : "x86";
         string directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SSH Space", "runtime", version, architecture);
+            "agent-ssh", "runtime", version, architecture);
         Directory.CreateDirectory(directory);
 
         WriteResource(CoreResource, Path.Combine(directory, "Microsoft.Web.WebView2.Core.dll"));
@@ -144,7 +146,7 @@ internal static class RuntimeBundle
     }
 }
 
-internal sealed class SshSpaceWindow : Form
+internal sealed class AgentSshWindow : Form
 {
     private readonly string root;
     private readonly WebView2 webView;
@@ -155,10 +157,10 @@ internal sealed class SshSpaceWindow : Form
     private static extern int DwmSetWindowAttribute(IntPtr window, int attribute,
         ref int value, int valueSize);
 
-    internal SshSpaceWindow(string workspaceRoot)
+    internal AgentSshWindow(string workspaceRoot)
     {
         root = workspaceRoot;
-        Text = "SSH Space";
+        Text = "agent-ssh";
         BackColor = Color.FromArgb(7, 9, 8);
         ForeColor = Color.FromArgb(242, 245, 241);
         ClientSize = new Size(1400, 880);
@@ -178,7 +180,7 @@ internal sealed class SshSpaceWindow : Form
         status.Font = new Font("Consolas", 11F, FontStyle.Bold);
         status.ForeColor = Color.FromArgb(156, 248, 199);
         status.BackColor = Color.FromArgb(7, 9, 8);
-        status.Text = "SSH SPACE / INITIALIZING CONTROL PLANE";
+        status.Text = "agent-ssh / INITIALIZING CONTROL PLANE";
 
         Controls.Add(webView);
         Controls.Add(status);
@@ -200,14 +202,14 @@ internal sealed class SshSpaceWindow : Form
     {
         try
         {
-            status.Text = "SSH SPACE / STARTING LOCAL SERVICE";
+            status.Text = "agent-ssh / STARTING LOCAL SERVICE";
             ServerHandle handle = await Task.Run(() => LocalServer.GetOrStart(root));
             ownedServer = handle.Process;
 
-            status.Text = "SSH SPACE / PREPARING DESKTOP VIEW";
+            status.Text = "agent-ssh / PREPARING DESKTOP VIEW";
             string userData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "SSH Space", "WebView2");
+                "agent-ssh", "WebView2");
             CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userData);
             await webView.EnsureCoreWebView2Async(environment);
 
@@ -246,7 +248,7 @@ internal sealed class SshSpaceWindow : Form
     private void ShowFailure(string message)
     {
         status.Visible = true;
-        status.Text = "SSH SPACE / START FAILED\r\n\r\n" + message;
+        status.Text = "agent-ssh / START FAILED\r\n\r\n" + message;
         status.ForeColor = Color.FromArgb(255, 115, 121);
     }
 
@@ -288,7 +290,7 @@ internal static class LocalServer
     {
         for (int port = FirstPort; port <= LastPort; port++)
         {
-            if (IsSshSpace(port))
+            if (IsAgentSsh(port))
             {
                 return new ServerHandle { Url = Url(port) };
             }
@@ -327,7 +329,7 @@ internal static class LocalServer
         {
             for (int port = selectedPort; port <= LastPort; port++)
             {
-                if (IsSshSpace(port))
+                if (IsAgentSsh(port))
                 {
                     return new ServerHandle { Url = Url(port), Process = process };
                 }
@@ -341,7 +343,7 @@ internal static class LocalServer
 
         try { if (!process.HasExited) process.Kill(); } catch { }
         process.Dispose();
-        throw new InvalidOperationException("The local SSH Space service did not start.");
+        throw new InvalidOperationException("The local agent-ssh service did not start.");
     }
 
     private static string FindPowerShell()
@@ -371,7 +373,7 @@ internal static class LocalServer
         return "http://127.0.0.1:" + port + "/";
     }
 
-    private static bool IsSshSpace(int port)
+    private static bool IsAgentSsh(int port)
     {
         try
         {
@@ -384,7 +386,7 @@ internal static class LocalServer
             {
                 string html = reader.ReadToEnd();
                 return response.StatusCode == HttpStatusCode.OK &&
-                    html.Contains("<title>SSH Space</title>") &&
+                    html.Contains("<title>agent-ssh</title>") &&
                     html.Contains("name=\"api-token\"");
             }
         }
