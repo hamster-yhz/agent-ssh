@@ -1,66 +1,103 @@
+<div align="center">
+
 # SSH Space
 
-SSH Space 是一个轻量的 Windows 桌面 SSH 控制台。用户和本地 Agent 共用一份服务器配置，既可以在桌面应用里管理和连接，也可以直接调用 PowerShell 命令行。
+### 一台 Windows 电脑，管理你的所有 SSH 连接
 
-项目没有 Node.js、数据库或前端框架依赖。Web 服务只监听 `127.0.0.1`，每次启动生成随机 API 令牌。
+桌面控制台、PowerShell CLI 与本地 Agent 共用同一套配置。<br>
+不需要数据库，不需要 Node.js，也不需要另外安装 OpenSSH。
 
-## 最简单的启动方式
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows11&logoColor=white)](https://github.com/hamster-yhz/agent-ssh/releases)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell&logoColor=white)](https://github.com/PowerShell/PowerShell)
+[![Bundled OpenSSH](https://img.shields.io/badge/OpenSSH-Bundled-34A853?logo=openssh&logoColor=white)](https://github.com/PowerShell/Win32-OpenSSH)
+[![Build and release](https://github.com/hamster-yhz/agent-ssh/actions/workflows/release.yml/badge.svg)](https://github.com/hamster-yhz/agent-ssh/actions/workflows/release.yml)
 
-主入口：
+[下载最新版本](https://github.com/hamster-yhz/agent-ssh/releases) · [查看构建产物](https://github.com/hamster-yhz/agent-ssh/actions) · [命令行用法](#命令行与-agent)
 
-- `SSH Space.exe`：完整桌面应用。打开独立原生窗口，页面、服务器配置、导入导出和终端均在窗口内运行，不启动外部浏览器。
+</div>
 
-桌面应用使用系统 WebView2 渲染现代界面，并在后台启动或复用 `127.0.0.1` 本地服务。WebView2 组件已嵌入 EXE，首次运行会释放到用户本地缓存；Windows 缺少 WebView2 Runtime 时会显示明确错误。正式发布包同时内置官方 Win32-OpenSSH 客户端，不依赖用户另外安装 OpenSSH。
+---
 
-## 下载与安装
+## 它适合谁？
 
-执行发布构建后，`dist\` 会生成：
+SSH Space 面向希望简单管理多台 Linux 服务器的 Windows 用户。你可以在桌面应用里填写 IP、端口、用户名和认证方式，然后点击连接；同一份配置也能被脚本或 Codex 等本地 Agent 安全调用。
 
-- `SSH-Space-2.0.0-Setup.exe`：推荐普通用户使用的按用户安装程序，不需要管理员权限，提供开始菜单和可选桌面快捷方式。
-- `SSH-Space-2.0.0-Portable.zip`：解压即用的便携版，适合 Agent 工作区或移动存储。
-- `SHA256SUMS.txt`：用于校验下载文件完整性。
+| 能力 | 使用体验 |
+| --- | --- |
+| 🖥️ 桌面控制台 | 新建、编辑、搜索服务器，并在应用内运行远程命令 |
+| ⚡ 一键连接 | 密码、私钥或 OpenSSH 交互认证均可使用 |
+| 📦 批量迁移 | 单台、任意多选或全部导出，支持文件和目录批量导入 |
+| 🤖 Agent 友好 | 提供稳定的 `ssh.ps1` CLI 和配套 Codex Skill |
+| 🔐 自带 OpenSSH | 正式安装包和便携版内置官方 Win32-OpenSSH |
+| 🧩 保持轻量 | 无数据库、无 Node.js、无前端框架运行时 |
 
-安装包和便携版都包含桌面程序、命令行脚本、Web 控制台和内置 OpenSSH，不包含开发者本机的服务器配置、密码、密钥、导出包、备份或运行数据。
+## 三步开始
 
-仓库包含 GitHub Actions 发布流水线：推送到 `main` 会自动构建并保存 14 天的工作流产物；推送 `v2.0.0` 形式的标签会自动创建 GitHub Release，并上传安装包、便携版和校验文件，不需要手工上传。
+### 1. 下载
+
+前往 [GitHub Releases](https://github.com/hamster-yhz/agent-ssh/releases)，根据需要选择：
+
+- **`SSH-Space-*-Setup.exe`**：推荐。按当前用户安装，不需要管理员权限。
+- **`SSH-Space-*-Portable.zip`**：解压即用，不写入安装信息。
+- **`SHA256SUMS.txt`**：用于核对下载文件完整性。
+
+如果 Releases 暂时没有正式版本，也可以从 [Actions](https://github.com/hamster-yhz/agent-ssh/actions/workflows/release.yml) 最近一次成功运行中下载 Windows 构建产物。
+
+### 2. 打开
+
+运行 `SSH Space.exe`。安装版会创建开始菜单入口，并可选择桌面快捷方式；便携版直接从解压目录启动。
+
+### 3. 添加服务器
+
+点击“新建服务器”，填写：
+
+- 容易识别的服务器别名；
+- IP 地址或域名；
+- SSH 端口和用户名；
+- 密码、私钥，或留空后连接时交互输入。
+
+保存后即可打开独立终端，或直接在应用页面执行命令。
+
+> [!TIP]
+> 推荐优先使用 Ed25519 私钥认证。密码模式可以使用，但本地配置和导出包可能包含明文密码，请像保护私钥一样保护它们。
+
+## 桌面应用里可以做什么？
+
+- 新建、编辑、删除和搜索服务器。
+- 查看内置 OpenSSH 与配置健康状态。
+- 上传私钥到当前 SSH Space 工作区。
+- 打开交互式 SSH 终端。
+- 在控制台内执行远程命令并查看真实退出码。
+- 多选服务器并批量导入或导出。
+- 在修改配置前自动创建可恢复快照。
+- 通过强确认短语恢复出厂设置。
+
+桌面界面由原生 WinForms 窗口承载，并使用 WebView2 渲染。内部服务只监听 `127.0.0.1`，每次启动都会生成随机 API 令牌，不对局域网或公网提供接口。
+
+## 导入与导出
+
+每次导出都会创建带时间戳和随机后缀的新目录，不会覆盖之前的结果。
+
+- 单台导出包含一个 `server.json`。
+- 使用私钥时，导出包还会包含对应密钥文件。
+- 批量导出时，每台服务器放在独立子目录中。
+- 导入遇到重名会生成 `-imported-2` 等新别名。
+- 导入的密钥会复制到隔离目录，不会覆盖已有密钥。
+
+> [!WARNING]
+> 导出包可能包含明文密码或私钥。不要把 `exports/` 上传到 GitHub、网盘或聊天工具，也不要把它当作普通配置文件分享。
+
+## 命令行与 Agent
+
+桌面应用适合日常管理，`ssh.ps1` 适合自动化和本地 Agent。两者使用同一份服务器配置。
 
 ```powershell
-git tag v2.0.0
-git push origin main --tags
-```
-
-也可以在 GitHub 的 Actions 页面手动运行 `Build and release`。手动运行会生成可下载的工作流产物，但只有版本标签会创建正式 Release。
-
-需要排查桌面窗口时，可以在 PowerShell 中以前台模式运行内部服务：
-
-```powershell
-.\app\server.ps1
-.\app\server.ps1 -NoBrowser
-.\app\server.ps1 -Port 9000
-```
-
-## 桌面控制台
-
-桌面控制台支持：
-
-- 新建、编辑、删除服务器配置。
-- 密钥、密码和连接时交互输入三种认证模式。
-- 上传私钥到工作区内的隔离目录。
-- 打开独立 SSH 终端，或直接在页面执行远程命令。
-- 搜索、多选、单台导出、任意多选批量导出。
-- 选择多个文件导入，或选择整个批量导出目录导入。
-- OpenSSH 环境状态提示和配置错误提示。
-- 带备份和强确认短语的恢复出厂设置。
-
-## 命令行
-
-```powershell
-# 查看和检查配置，不发起连接
+# 查看别名和检查配置，不连接服务器
 .\ssh.ps1 list
 .\ssh.ps1 doctor
 .\ssh.ps1 doctor prod
 
-# 交互登录或执行远程命令
+# 打开交互终端或执行远程命令
 .\ssh.ps1 prod
 .\ssh.ps1 prod uptime
 .\ssh.ps1 prod "docker ps"
@@ -70,31 +107,33 @@ git push origin main --tags
 .\ssh.ps1 export all
 .\ssh.ps1 export-many prod test staging
 
-# 导入文件、目录或多个路径
-.\ssh.ps1 import .\exports\prod_xxx\server.json
-.\ssh.ps1 import .\exports\batch_xxx
+# 导入一个文件、整个目录或多个包
+.\ssh.ps1 import .\package\server.json
+.\ssh.ps1 import .\batch-package
 .\ssh.ps1 import .\package-a .\package-b
-
-# 打开配置、恢复出厂设置
-.\ssh.ps1 config
-.\ssh.ps1 reset
 ```
 
-## Codex Skill
+### Codex Skill
 
-SSH Space 自带正式的 Codex Skill。Agent 通过稳定的 `ssh.ps1` 命令行操作服务器，不调用桌面应用内部的本地 HTTP API，也不会直接读取或输出密码和私钥。
+安装程序可以同时安装 SSH Space Codex Skill。安装时勾选 **Install the SSH Space Skill for Codex**，完成后重启 Codex 即可。
 
-使用安装程序时，勾选“Install the SSH Space Skill for Codex”，安装完成后重启 Codex。便携版或源码目录可运行：
+便携版或源码目录也可以手动安装：
 
 ```powershell
 .\scripts\install-codex-skill.ps1
 ```
 
-Skill 会安装到 `%USERPROFILE%\.codex\skills\ssh-space`。它可以从当前目录、`SSH_SPACE_HOME`、标准安装目录和当前用户卸载信息中定位 SSH Space。
+Skill 位于 `%USERPROFILE%\.codex\skills\ssh-space`。Agent 通过公开的 CLI 工作，不调用桌面应用内部 API；它会先运行 `list` 和 `doctor`，并在执行破坏性远程操作前请求确认。
 
-## 配置
+## 配置与认证
 
-配置文件是 `config\servers.local.json`。也可以在桌面控制台中维护，通常不需要手写 JSON。
+普通用户建议直接在桌面应用中维护配置，不需要手写 JSON。配置保存在：
+
+```text
+config\servers.local.json
+```
+
+配置格式示例：
 
 ```json
 {
@@ -116,91 +155,27 @@ Skill 会安装到 `%USERPROFILE%\.codex\skills\ssh-space`。它可以从当前�
 }
 ```
 
-认证规则：
+认证选择规则：
 
-- `identityFile` 非空时使用密钥。
-- `identityFile` 为空且 `password` 非空时使用密码。
-- 两者都为空时由 OpenSSH 在连接时交互询问。
+1. 填写 `identityFile` 时使用私钥。
+2. 未填写私钥但填写 `password` 时使用密码。
+3. 两者都留空时，由 OpenSSH 在连接时交互询问。
 
-推荐使用密钥：
-
-```powershell
-ssh-keygen -t ed25519 -f .\keys\prod_ed25519
-```
-
-工作区外的配置可以通过环境变量指定：
+也可以把配置放在工作区之外：
 
 ```powershell
 $env:SSH_SPACE_CONFIG = 'D:\private\my-servers.json'
-.\SSH Space.exe
+& '.\SSH Space.exe'
 ```
 
-## 导入和导出隔离
+## 安全与隐私
 
-每次导出都会在 `exports\` 中创建带时间戳和随机后缀的新目录，不覆盖以前的结果。
-
-单台服务器包包含一个 `server.json`；使用密钥时还包含一个私钥文件。批量导出时，每台服务器位于独立子目录。导入遇到重名会创建 `-imported-2` 等新别名，私钥复制到独立的 `keys\imports\...` 目录，不覆盖现有配置或密钥。
-
-导出包可能含明文密码或私钥。`exports\`、本地配置、密钥、运行数据和备份均已加入 `.gitignore`，仍应把这些目录视为敏感数据，不要上传或分享。
-
-## 脚本核心如何工作
-
-`ssh.ps1` 是唯一的 SSH 业务入口：
-
-1. 读取并验证 JSON，合并默认值和服务器配置。
-2. 优先选择发布包内的 `runtime\openssh\ssh.exe`，便携源码缺少内置运行时时才回退系统 OpenSSH。
-3. 把别名转换为一组受控的 `ssh.exe` 参数，包括端口、超时、保活、私钥和独立的 `known_hosts`。
-4. 交互会话直接启动 OpenSSH；远程命令把剩余参数作为一条远程命令传给 OpenSSH。
-5. 密码认证通过临时的 `SSH_ASKPASS` 环境完成，密码不会拼进命令行参数。
-6. Web API 复用同一套 PowerShell 函数，因此网页和命令行的验证、导入导出及 SSH 行为一致。
-
-`app\server.ps1` 使用 Windows 自带的 `HttpListener` 提供应用资源和本地 API。它只绑定回环地址，并要求界面启动时注入的随机令牌，其他页面不能直接调用执行接口。
-
-## EXE 说明
-
-- 根目录的 `SSH Space.exe` 是单实例 WinForms + WebView2 桌面程序。它承载完整控制台界面、管理本地服务生命周期，但不把服务器配置、密码或私钥打包进程序。
-- 首次使用密码认证时，`ssh.ps1` 会在 `data\` 下从 `app\helpers\SshSpace.AskPass.cs` 本地编译 `ssh-space-askpass.exe`。它只把当前进程临时提供的密码交给 OpenSSH，避免密码出现在命令行中；它不是常驻服务。
-
-修改桌面程序源码后可重新构建：
-
-```powershell
-.\scripts\build-desktop.ps1
-```
-
-生成完整发布包：
-
-```powershell
-.\scripts\build-release.ps1
-```
-
-发布脚本会从 Microsoft `PowerShell/Win32-OpenSSH` 官方仓库下载固定版本，并核对固定 SHA-256 后才放入运行目录。安装程序由 Inno Setup 6 构建；仅需要便携 ZIP 时可使用 `-SkipInstaller`。默认复用根目录已构建的桌面 EXE，桌面 C# 源码有变化时使用 `-RebuildDesktop`。
-
-重建前应先关闭正在运行的 SSH Space 桌面窗口。
-
-只修改 `app\web\`、`ssh.ps1` 或 `app\server.ps1` 不需要重建根目录 EXE。
-
-## 项目结构
-
-```text
-SSH Space.exe                  桌面入口
-ssh.ps1                        用户与 Agent 的 CLI 入口
-app/                           应用运行文件
-src/desktop/                   桌面程序源码和清单
-scripts/                       构建脚本
-skills/ssh-space/              Codex Skill
-config/ keys/ data/            本地配置、密钥和运行数据
-exports/ backups/              敏感导出包与恢复备份
-```
-
-## OpenSSH 与配置损坏
-
-正式发布包内置 OpenSSH。开发目录如果还没有 `runtime\openssh`，会自动回退系统 OpenSSH；两者都缺失时，服务器编辑、导入、导出和恢复仍然可用，连接和远程命令会提示重新安装。可以用下面的命令检查实际使用的是 `bundled` 还是 `system`：
-
-```powershell
-.\ssh.ps1 doctor
-```
-
-手工把 JSON 改坏时，命令行会给出 JSON 错误，Web 页面显示配置损坏状态，不会拿损坏内容继续连接。通过脚本或 Web 正常保存前都会在 `backups\auto-save_...` 创建快照。
+- 正式发布包不包含开发者的服务器配置、密码、密钥、导出包或备份。
+- 密码不会出现在 `ssh.exe` 命令行参数中，而是通过临时 `SSH_ASKPASS` 环境交给 OpenSSH。
+- `known_hosts` 独立保存在 SSH Space 数据目录中。
+- `config/servers.local.json`、`keys/`、`data/`、`exports/` 和 `backups/` 已被 Git 忽略。
+- 桌面内部 API 仅绑定回环地址，并使用每次启动随机生成的令牌。
+- 恢复出厂设置前会移动现有配置、密钥和 `known_hosts` 到备份目录。
 
 恢复出厂设置必须逐字输入：
 
@@ -208,4 +183,106 @@ exports/ backups/              敏感导出包与恢复备份
 RESET SSH SPACE
 ```
 
-执行前，当前配置、工作区密钥和 `known_hosts` 会被移到 `backups\factory-reset_...`。历史导出包不会删除，备份可用于人工恢复。
+历史导出包不会被恢复出厂设置删除。
+
+## 安装程序会修改什么？
+
+安装版是标准的 Windows 按用户安装程序：
+
+- 默认安装到 `%LOCALAPPDATA%\Programs\SSH Space`。
+- 在当前用户的程序卸载列表中登记 SSH Space。
+- 创建开始菜单入口，可选创建桌面快捷方式。
+- 可选安装 Codex Skill 到用户目录。
+- 卸载时提供标准卸载入口。
+
+它不会安装 Windows 服务、驱动、计划任务，不会修改防火墙，也不会替换系统 OpenSSH 或强制写入 `PATH`。便携版则不会写入程序卸载列表。
+
+## 常见问题
+
+<details>
+<summary><strong>电脑没有安装 OpenSSH，可以连接吗？</strong></summary>
+
+可以。正式安装包和便携版内置经过固定 SHA-256 校验的官方 Win32-OpenSSH。开发目录缺少内置运行时时才会回退到系统 OpenSSH。
+
+</details>
+
+<details>
+<summary><strong>怎么确认当前使用的是内置还是系统 OpenSSH？</strong></summary>
+
+运行：
+
+```powershell
+.\ssh.ps1 doctor
+```
+
+输出会标明 `bundled`、`system` 或 `missing`。
+
+</details>
+
+<details>
+<summary><strong>手工把配置文件改坏了怎么办？</strong></summary>
+
+SSH Space 会停止使用损坏配置并显示 JSON 错误，不会拿错误内容继续连接。正常保存前还会在 `backups\auto-save_*` 创建快照，可用于人工恢复。
+
+</details>
+
+<details>
+<summary><strong>为什么其他 SSH 工具能连，SSH Space 却提示失败？</strong></summary>
+
+先运行 `.\ssh.ps1 doctor 别名` 检查端口、认证方式和 OpenSSH 状态。若配置正常，请在 [Issues](https://github.com/hamster-yhz/agent-ssh/issues) 中附上错误文字，但不要上传本地配置、密码、私钥或导出包。
+
+</details>
+
+## 从源码构建
+
+重新构建桌面入口：
+
+```powershell
+.\scripts\build-desktop.ps1
+```
+
+生成安装程序、便携包和校验文件：
+
+```powershell
+.\scripts\build-release.ps1
+```
+
+仅构建便携 ZIP：
+
+```powershell
+.\scripts\build-release.ps1 -SkipInstaller
+```
+
+发布流水线位于 `.github/workflows/release.yml`：
+
+- 推送到 `main`：自动构建，产物在 Actions 中保留 14 天。
+- 推送 `v2.0.0` 形式的标签：自动创建 GitHub Release 并上传全部文件。
+- Actions 页面手动运行：生成可下载的工作流产物。
+
+```powershell
+git tag v2.0.0
+git push origin main --tags
+```
+
+## 项目结构
+
+```text
+SSH Space.exe                  桌面应用入口
+ssh.ps1                        用户与 Agent 的 CLI
+app/                           本地服务与桌面界面
+src/desktop/                   WinForms / WebView2 宿主源码
+scripts/                       构建和安装脚本
+skills/ssh-space/              Codex Skill
+config/ keys/ data/            本地配置、密钥和运行数据
+exports/ backups/              敏感导出包与恢复备份
+```
+
+第三方组件与许可证信息见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+---
+
+<div align="center">
+
+**把服务器连接留在本地，把日常操作变得简单。**
+
+</div>
