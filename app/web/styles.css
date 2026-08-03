@@ -256,6 +256,9 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--re
 .sheet-footer { position: sticky; z-index: 3; bottom: 0; min-height: 70px; padding: 14px 24px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; background: rgba(13,17,15,.97); backdrop-filter: blur(16px); }
 .command-button.busy { cursor: wait; }
 .command-button.busy::before { content: ""; width: 12px; height: 12px; border: 1px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: button-spin .7s linear infinite; }
+.connection-button { min-width: 96px; }
+.connection-button.connected { color: var(--mint); border-color: #345443; background: #0d1711; }
+.connection-button .connection-glyph { font-size: 13px; }
 .icon-button.busy, .rail-button.busy { cursor: wait; opacity: .55; }
 @keyframes button-spin { to { transform: rotate(360deg); } }
 .transfer-dialog { width: min(580px, calc(100vw - 28px)); }

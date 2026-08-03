@@ -25,7 +25,7 @@ SSH Space 面向希望简单管理多台 Linux 服务器的 Windows 用户。你
 | 能力 | 使用体验 |
 | --- | --- |
 | 🖥️ 桌面控制台 | 新建、编辑、搜索服务器，并在应用内运行远程命令 |
-| ⚡ 一键连接 | 密码、私钥或 OpenSSH 交互认证均可使用 |
+| ⚡ 持久连接 | Agent 与应用命令自动复用认证连接，空闲 10 分钟后释放 |
 | 📦 批量迁移 | 单台、任意多选或全部导出，支持文件和目录批量导入 |
 | 🤖 Agent 友好 | 提供稳定的 `ssh.ps1` CLI 和配套 Codex Skill |
 | 🔐 自带 OpenSSH | 正式安装包和便携版内置官方 Win32-OpenSSH |
@@ -83,7 +83,8 @@ SSH Space 会在启动后静默检查 GitHub 的最新稳定 Release，也可以
 - 查看内置 OpenSSH 与配置健康状态。
 - 上传私钥到当前 SSH Space 工作区。
 - 打开交互式 SSH 终端。
-- 在控制台内执行远程命令并查看真实退出码。
+- 主动连接或断开服务器，并查看实时连接状态。
+- 在控制台内复用远程 Shell 执行命令并查看真实退出码。
 - 多选服务器并批量导入或导出。
 - 在修改配置前自动创建可恢复快照。
 - 通过强确认短语恢复出厂设置。
@@ -113,7 +114,12 @@ SSH Space 会在启动后静默检查 GitHub 的最新稳定 Release，也可以
 .\ssh.ps1 doctor
 .\ssh.ps1 doctor prod
 
-# 打开交互终端或执行远程命令
+# 可选：主动管理可复用命令会话
+.\ssh.ps1 connect prod
+.\ssh.ps1 status prod
+.\ssh.ps1 disconnect prod
+
+# 打开独立交互终端或执行远程命令
 .\ssh.ps1 prod
 .\ssh.ps1 prod uptime
 .\ssh.ps1 prod "docker ps"
@@ -128,6 +134,8 @@ SSH Space 会在启动后静默检查 GitHub 的最新稳定 Release，也可以
 .\ssh.ps1 import .\batch-package
 .\ssh.ps1 import .\package-a .\package-b
 ```
+
+执行远程命令时无需先运行 `connect`：首次命令会自动连接，后续命令复用同一个已认证远程 Shell，并保留工作目录和环境变量。会话连续空闲 10 分钟后自动断开；网络断开后，下一条命令会建立新连接。`disconnect` 只关闭 Agent/命令面板使用的会话，不会关闭用户已经打开的独立终端。
 
 ### Codex Skill
 
@@ -279,11 +287,11 @@ SSH Space 会停止使用损坏配置并显示 JSON 错误，不会拿错误内�
 发布流水线位于 `.github/workflows/release.yml`：
 
 - 推送到 `main`：自动构建，产物在 Actions 中保留 14 天。
-- 推送 `v2.0.0` 形式的标签：自动创建 GitHub Release 并上传全部文件。
+- 推送 `vX.Y.Z` 形式的标签：自动创建 GitHub Release 并上传全部文件。
 - Actions 页面手动运行：生成可下载的工作流产物。
 
 ```powershell
-git tag v2.0.0
+git tag v2.2.0
 git push origin main --tags
 ```
 
@@ -292,7 +300,7 @@ git push origin main --tags
 ```text
 SSH Space.exe                  桌面应用入口
 ssh.ps1                        用户与 Agent 的 CLI
-app/                           本地服务与桌面界面
+app/                           本地服务、持久会话宿主与桌面界面
 src/desktop/                   WinForms / WebView2 宿主源码
 scripts/                       构建和安装脚本
 skills/ssh-space/              Codex Skill

@@ -57,6 +57,8 @@ jobs:
           $files = @(
             '.\ssh.ps1',
             '.\app\server.ps1',
+            '.\app\session-client.ps1',
+            '.\app\session-host.ps1',
             '.\app\update.ps1',
             '.\scripts\build-desktop.ps1',
             '.\scripts\get-openssh.ps1',
@@ -74,6 +76,16 @@ jobs:
             }
           }
           node --check .\app\web\app.js
+
+          . .\ssh.ps1
+          $descriptor = Ensure-SshSpaceSessionHost
+          $health = Invoke-SshSpaceSessionApi $descriptor 'GET' '/health' $null 3
+          if (-not $health.ok -or $health.idleTimeoutSeconds -ne 600) {
+            throw 'Reusable SSH session host verification failed.'
+          }
+          if (-not (Stop-SshSpaceSessionHostIfIdle)) {
+            throw 'Reusable SSH session host did not stop cleanly.'
+          }
 
       - name: Build release packages
         # The WinForms host targets .NET Framework and compiles through CodeDOM.
@@ -117,6 +129,8 @@ jobs:
             foreach ($required in @(
               'SSH Space.exe',
               'VERSION',
+              'app/session-client.ps1',
+              'app/session-host.ps1',
               'app/update.ps1',
               'runtime/openssh/ssh.exe',
               'runtime/openssh/LICENSE.txt',

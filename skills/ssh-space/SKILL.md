@@ -44,6 +44,16 @@ Resolve `<skill-directory>` from this `SKILL.md`. Prefer a workspace found at or
 
 Use the last form only for a user-requested interactive session.
 
+Remote command calls automatically establish and reuse a persistent remote shell. The connection closes after 10 idle minutes. Use the lifecycle commands when explicit control is useful:
+
+```powershell
+& $sshSpaceCli connect <alias>
+& $sshSpaceCli status <alias>
+& $sshSpaceCli disconnect <alias>
+```
+
+The interactive terminal is independent from the reusable Agent command session. Disconnecting the Agent session does not close a terminal the user has open.
+
 ## Import and export packages
 
 ```powershell

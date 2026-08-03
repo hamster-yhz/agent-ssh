@@ -5,7 +5,8 @@ const state = {
   servers: [], selectedAlias: null, checked: new Set(), query: '', authMode: 'key', history: [], historyIndex: 0,
   runtime: null, configError: '', saving: false, uploading: false, exporting: false, importing: false,
   refreshing: false, openingTerminal: false, deleting: false, resetting: false,
-  update: null, checkingUpdate: false, downloadingUpdate: false, installingUpdate: false, updateVerified: false
+  update: null, checkingUpdate: false, downloadingUpdate: false, installingUpdate: false, updateVerified: false,
+  session: null, sessionAction: false
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -55,7 +56,10 @@ function friendlyError(error) {
     [/folder path is outside this workspace/i, '只能打开 SSH Space 工作区内的目录。'],
     [/already up to date/i, 'SSH Space 已经是最新版本。'],
     [/failed sha-256|checksum|sha256sums/i, '更新文件完整性校验失败，安装已取消。'],
-    [/latest release|github|update api/i, '暂时无法连接 GitHub 更新服务，请稍后重试。']
+    [/latest release|github|update api/i, '暂时无法连接 GitHub 更新服务，请稍后重试。'],
+    [/reusable sessions require saved password or key authentication/i, '长连接需要已保存的密码或密钥；需要手动认证时请打开交互终端。'],
+    [/session host did not become ready|session host is missing/i, '本地 SSH 会话服务启动失败，请重新打开 SSH Space 后重试。'],
+    [/terminal process exited|terminal launch timed out/i, '终端窗口启动失败，请稍后重试。']
   ];
   return translations.find(([pattern]) => pattern.test(message))?.[1] || message || '操作未完成，请稍后重试。';
 }
@@ -218,7 +222,43 @@ async function loadState(preferredAlias) {
   if (preferredAlias && state.servers.some(server => server.alias === preferredAlias)) state.selectedAlias = preferredAlias;
   if (!state.servers.some(server => server.alias === state.selectedAlias)) state.selectedAlias = state.servers[0]?.alias || null;
   render();
+  refreshSessionStatus(state.selectedAlias);
   if (state.configError) toast(`配置文件损坏：${state.configError}`, 'error');
+}
+
+async function refreshSessionStatus(alias = state.selectedAlias) {
+  if (!alias) { state.session = null; render(); return; }
+  try {
+    const result = await api(`/api/session/status?alias=${encodeURIComponent(alias)}`);
+    if (state.selectedAlias !== alias) return;
+    state.session = result.sessions?.[0] || { alias, state: 'disconnected', idleSeconds: 0, idleTimeoutSeconds: 600 };
+    render();
+  } catch {
+    if (state.selectedAlias === alias) {
+      state.session = { alias, state: 'disconnected', idleSeconds: 0, idleTimeoutSeconds: 600 };
+      render();
+    }
+  }
+}
+
+async function toggleSession(event) {
+  if (state.sessionAction || !state.selectedAlias) return;
+  const alias = state.selectedAlias;
+  const connected = state.session?.alias === alias && ['connected', 'busy'].includes(state.session.state);
+  state.sessionAction = true;
+  setBusy(event.currentTarget, true, connected ? '断开中' : '连接中');
+  try {
+    const status = await api(connected ? '/api/session/disconnect' : '/api/session/connect', {
+      method: 'POST', body: JSON.stringify({ alias })
+    });
+    if (state.selectedAlias === alias) state.session = status;
+    toast(connected ? `已断开 ${alias} 的命令会话` : `${alias} 已建立长连接`);
+  } catch (error) { toast(friendlyError(error), 'error'); }
+  finally {
+    state.sessionAction = false;
+    setBusy(event.currentTarget, false, connected ? '断开中' : '连接中');
+    if (state.selectedAlias === alias) await refreshSessionStatus(alias);
+  }
 }
 
 function formatBytes(bytes) {
@@ -381,7 +421,9 @@ function render() {
     row.addEventListener('click', event => {
       if (event.target.matches('.server-check')) return;
       state.selectedAlias = row.dataset.alias;
+      state.session = null;
       render();
+      refreshSessionStatus(state.selectedAlias);
     });
     $('.server-check', row).addEventListener('change', event => {
       event.target.checked ? state.checked.add(row.dataset.alias) : state.checked.delete(row.dataset.alias);
@@ -406,8 +448,9 @@ function render() {
   if (!server) return;
   $('#node-title').textContent = server.alias;
   $('#node-address').textContent = `${server.user}@${server.host}:${server.port}`;
-  $('#node-status').textContent = server.status === 'ready' ? 'READY' : 'CHECK CONFIG';
-  $('#node-status-dot').style.background = server.status === 'ready' ? 'var(--green)' : 'var(--amber)';
+  const sessionState = state.session?.alias === server.alias ? state.session.state : 'disconnected';
+  $('#node-status').textContent = server.status !== 'ready' ? 'CHECK CONFIG' : ({ connected: 'CONNECTED', busy: 'COMMAND ACTIVE', disconnected: 'DISCONNECTED' }[sessionState] || 'DISCONNECTED');
+  $('#node-status-dot').style.background = server.status !== 'ready' ? 'var(--amber)' : (sessionState === 'connected' ? 'var(--green)' : (sessionState === 'busy' ? 'var(--amber)' : 'var(--muted)'));
   $('#node-auth').textContent = server.auth.toUpperCase();
   $('#metric-port').textContent = server.port;
   $('#metric-auth').textContent = server.auth.toUpperCase();
@@ -418,7 +461,12 @@ function render() {
   $('#topology-index').textContent = String(state.servers.findIndex(item => item.alias === server.alias) + 1).padStart(2, '0');
   $('#terminal-label').textContent = `${server.alias.toUpperCase()} / REMOTE EXEC`;
   $('#terminal-exit').textContent = 'IDLE';
-  $('#open-terminal').disabled = state.runtime && !state.runtime.sshAvailable;
+  const connectionButton = $('#connection-button');
+  const connected = ['connected', 'busy'].includes(sessionState);
+  $('.button-label', connectionButton).textContent = connected ? '断开' : '连接';
+  connectionButton.classList.toggle('connected', connected);
+  connectionButton.disabled = state.sessionAction || server.status !== 'ready' || (state.runtime && !state.runtime.sshAvailable);
+  $('#open-terminal').disabled = server.status !== 'ready' || (state.runtime && !state.runtime.sshAvailable);
 }
 
 function openServerDialog(server) {
@@ -608,6 +656,7 @@ async function runCommand(event) {
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(2);
     output.insertAdjacentHTML('beforeend', `<div class="output-line system"><span>EXIT</span><p>Code ${result.exitCode} / ${elapsed}s</p></div>`);
     $('#terminal-exit').textContent = `EXIT ${result.exitCode}`;
+    await refreshSessionStatus(state.selectedAlias);
   } catch (error) {
     output.lastElementChild.remove();
     output.insertAdjacentHTML('beforeend', `<div class="output-line error">${escapeHtml(friendlyError(error))}</div>`);
@@ -657,15 +706,24 @@ function bindEvents() {
   $('#update-install').addEventListener('click', requestUpdateInstall);
   $('#update-install-form').addEventListener('submit', event => { event.preventDefault(); installUpdate(); });
   $('#update-release-page').addEventListener('click', openLatestRelease);
+  $('#connection-button').addEventListener('click', toggleSession);
   $('#edit-server').addEventListener('click', () => openServerDialog(state.servers.find(server => server.alias === state.selectedAlias)));
   $('#export-server').addEventListener('click', () => exportServers([state.selectedAlias]));
   $('#open-terminal').addEventListener('click', async event => {
     if (state.openingTerminal || !state.selectedAlias) return;
     state.openingTerminal = true;
     setBusy(event.currentTarget, true);
-    try { await api('/api/terminal/open', { method: 'POST', body: JSON.stringify({ alias: state.selectedAlias }) }); toast('终端已打开'); }
-    catch (error) { toast(friendlyError(error), 'error'); }
-    finally { state.openingTerminal = false; setBusy(event.currentTarget, false); render(); }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      await api('/api/terminal/open', { method: 'POST', body: JSON.stringify({ alias: state.selectedAlias }), signal: controller.signal });
+      toast('终端已打开');
+    }
+    catch (error) {
+      if (error?.name === 'AbortError') error = new Error('Terminal launch timed out.');
+      toast(friendlyError(error), 'error');
+    }
+    finally { clearTimeout(timeout); state.openingTerminal = false; setBusy(event.currentTarget, false); render(); }
   });
   $('#delete-server').addEventListener('click', () => {
     if (!state.selectedAlias) return;
@@ -812,3 +870,4 @@ bindMotion();
 loadState()
   .then(() => setTimeout(() => checkForUpdates(false), 1200))
   .catch(error => toast(friendlyError(error), 'error'));
+setInterval(() => { if (!state.sessionAction && state.selectedAlias) refreshSessionStatus(state.selectedAlias); }, 10000);

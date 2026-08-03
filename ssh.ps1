@@ -30,6 +30,9 @@ SSH Space
 Usage:
   .\ssh.ps1 list                     List servers
   .\ssh.ps1 doctor [alias]           Validate configuration
+  .\ssh.ps1 connect <alias>           Establish a reusable SSH session
+  .\ssh.ps1 status [alias]            Show reusable session status
+  .\ssh.ps1 disconnect <alias>        Close the reusable command session
   .\ssh.ps1 config                   Open local configuration
   .\ssh.ps1 export <alias|all>        Export isolated packages
   .\ssh.ps1 export-many <aliases...>  Export selected servers as a batch
@@ -77,6 +80,8 @@ function Get-ObjectValue {
 
     return $property.Value
 }
+
+. (Join-Path $WorkspaceRoot 'app\session-client.ps1')
 
 function Read-SshSpaceConfig {
     Initialize-LocalConfig
@@ -262,7 +267,11 @@ function Assert-OpenSshAvailable {
 }
 
 function New-SshArguments {
-    param([Parameter(Mandatory)][object]$Settings)
+    param(
+        [Parameter(Mandatory)][object]$Settings,
+        [string[]]$RemoteArguments,
+        [switch]$BatchMode
+    )
 
     $dataDirectory = Split-Path -Parent $KnownHostsPath
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
@@ -286,7 +295,10 @@ function New-SshArguments {
         $arguments += @('-i', $Settings.IdentityFile, '-o', 'IdentitiesOnly=yes')
     }
 
+    if ($BatchMode) { $arguments += @('-o', 'BatchMode=yes') }
+
     $arguments += $Settings.Host
+    if ($null -ne $RemoteArguments -and $RemoteArguments.Count -gt 0) { $arguments += $RemoteArguments }
     return $arguments
 }
 
@@ -672,6 +684,7 @@ try {
         Write-Host 'A recoverable backup will be created. Export packages are not changed.' -ForegroundColor Yellow
         $confirmation = Read-Host 'Type RESET SSH SPACE to continue'
         $backup = Reset-SshSpaceFactoryDefaults $confirmation
+        Disconnect-SshSpaceSessionsIfRunning @()
         Write-Host "Factory defaults restored. Backup: $backup" -ForegroundColor Green
         exit 0
     }
@@ -686,6 +699,31 @@ try {
     if ($Target -eq 'doctor') {
         $doctorAlias = if ($null -ne $RemoteCommand -and $RemoteCommand.Length -gt 0) { $RemoteCommand[0] } else { '' }
         exit (Invoke-Doctor $config $doctorAlias)
+    }
+
+    if ($Target -eq 'connect') {
+        if ($null -eq $RemoteCommand -or $RemoteCommand.Length -ne 1) { throw 'Usage: .\ssh.ps1 connect <alias>' }
+        [void](Get-ServerSettings $config (Get-ServerEntry $config $RemoteCommand[0]))
+        $status = Connect-SshSpaceSession $RemoteCommand[0]
+        Write-Host "Connected: $($status.alias) (idle timeout $($status.idleTimeoutSeconds)s)" -ForegroundColor Green
+        exit 0
+    }
+
+    if ($Target -eq 'status') {
+        $statusAlias = if ($null -ne $RemoteCommand -and $RemoteCommand.Length -gt 0) { $RemoteCommand[0] } else { '' }
+        if (@($RemoteCommand).Count -gt 1) { throw 'Usage: .\ssh.ps1 status [alias]' }
+        $result = Get-SshSpaceSessionStatus $statusAlias
+        $sessions = @($result.sessions)
+        if ($sessions.Count -eq 0) { Write-Host 'No reusable SSH sessions.' -ForegroundColor DarkGray }
+        else { $sessions | Select-Object alias, state, idleSeconds, idleTimeoutSeconds | Format-Table -AutoSize }
+        exit 0
+    }
+
+    if ($Target -eq 'disconnect') {
+        if ($null -eq $RemoteCommand -or $RemoteCommand.Length -ne 1) { throw 'Usage: .\ssh.ps1 disconnect <alias>' }
+        $status = Disconnect-SshSpaceSession $RemoteCommand[0]
+        Write-Host "Disconnected: $($status.alias)" -ForegroundColor Green
+        exit 0
     }
 
     if ($Target -eq 'export') {
@@ -726,6 +764,11 @@ try {
 
     $serverEntry = Get-ServerEntry $config $Target
     $serverSettings = Get-ServerSettings $config $serverEntry
+    if ($null -ne $RemoteCommand -and $RemoteCommand.Length -gt 0) {
+        $result = Invoke-SshSpaceSessionCommand $serverSettings.Alias ($RemoteCommand -join ' ') 120
+        if (-not [string]::IsNullOrEmpty([string]$result.output)) { [Console]::Out.WriteLine([string]$result.output) }
+        exit ([int]$result.exitCode)
+    }
     # Invoke as a statement so native SSH output remains attached to the console.
     # Capturing the function inside exit (...) swallows remote output in PowerShell.
     Invoke-SshConnection $serverSettings $RemoteCommand

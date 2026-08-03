@@ -174,6 +174,7 @@ function Save-ServerFromRequest {
     if ($originalAlias) { $config.servers.PSObject.Properties.Remove($originalAlias) }
     $config.servers | Add-Member -MemberType NoteProperty -Name $alias -Value $server
     Save-SshSpaceConfig $config
+    Disconnect-SshSpaceSessionsIfRunning @($originalAlias, $alias)
     return $alias
 }
 
@@ -184,6 +185,7 @@ function Remove-ServerFromRequest {
     [void](Get-ServerEntry $config $alias)
     $config.servers.PSObject.Properties.Remove($alias)
     Save-SshSpaceConfig $config
+    Disconnect-SshSpaceSessionsIfRunning @($alias)
 }
 
 function Save-UploadedKey {
@@ -245,36 +247,16 @@ function Open-ServerTerminal {
     $config = Read-SshSpaceConfig
     [void](Get-ServerSettings $config (Get-ServerEntry $config $Alias))
     $encoded = ConvertTo-EncodedPowerShell (Get-ChildPowerShellCode $Alias '')
-    Start-Process -FilePath $PowerShellExecutable -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) | Out-Null
+    $process = Start-Process -FilePath $PowerShellExecutable -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -PassThru
+    Start-Sleep -Milliseconds 120
+    if ($process.HasExited) { throw "The terminal process exited before its window was ready (exit code $($process.ExitCode))." }
+    return [ordered]@{ ok = $true; pid = $process.Id; launched = $true }
 }
 
 function Invoke-RemoteCommandProcess {
     param([Parameter(Mandatory)][string]$Alias, [Parameter(Mandatory)][string]$Command)
     if ([string]::IsNullOrWhiteSpace($Command)) { throw 'Remote command cannot be empty.' }
-    $config = Read-SshSpaceConfig
-    [void](Get-ServerSettings $config (Get-ServerEntry $config $Alias))
-    $encoded = ConvertTo-EncodedPowerShell (Get-ChildPowerShellCode $Alias $Command)
-    $info = New-Object Diagnostics.ProcessStartInfo
-    $info.FileName = $PowerShellExecutable
-    $info.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $info.RedirectStandardOutput = $true
-    $info.RedirectStandardError = $true
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $info
-    [void]$process.Start()
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    if (-not $process.WaitForExit(120000)) {
-        try { $process.Kill() } catch {}
-        throw 'Remote command timed out after 120 seconds.'
-    }
-    $stdout = $stdoutTask.Result
-    $stderr = $stderrTask.Result
-    $combined = ($stdout + $stderr)
-    if ($combined.Length -gt 524288) { $combined = $combined.Substring(0, 524288) + "`n[output truncated]" }
-    return [ordered]@{ exitCode = $process.ExitCode; output = $combined }
+    return Invoke-SshSpaceSessionCommand $Alias $Command 120
 }
 
 function Get-ContentType {
@@ -368,6 +350,7 @@ try {
                 'POST /api/factory-reset' {
                     $body = Read-RequestJson $request
                     $backup = Reset-SshSpaceFactoryDefaults ([string](Get-ObjectValue $body 'confirmation' ''))
+                    Disconnect-SshSpaceSessionsIfRunning @()
                     Send-Json $context @{ ok = $true; backup = $backup }
                 }
                 'POST /api/key/upload' {
@@ -376,8 +359,19 @@ try {
                 }
                 'POST /api/terminal/open' {
                     $body = Read-RequestJson $request
-                    Open-ServerTerminal ([string](Get-ObjectValue $body 'alias' ''))
-                    Send-Json $context @{ ok = $true }
+                    Send-Json $context (Open-ServerTerminal ([string](Get-ObjectValue $body 'alias' '')))
+                }
+                'GET /api/session/status' {
+                    $alias = [string]$request.QueryString['alias']
+                    Send-Json $context (Get-SshSpaceSessionStatus $alias)
+                }
+                'POST /api/session/connect' {
+                    $body = Read-RequestJson $request
+                    Send-Json $context (Connect-SshSpaceSession ([string](Get-ObjectValue $body 'alias' '')))
+                }
+                'POST /api/session/disconnect' {
+                    $body = Read-RequestJson $request
+                    Send-Json $context (Disconnect-SshSpaceSession ([string](Get-ObjectValue $body 'alias' '')))
                 }
                 'POST /api/command/run' {
                     $body = Read-RequestJson $request
