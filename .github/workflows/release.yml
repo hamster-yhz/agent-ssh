@@ -56,7 +56,6 @@ jobs:
         run: |
           $files = @(
             '.\agent-ssh.ps1',
-            '.\ssh.ps1',
             '.\app\server.ps1',
             '.\app\session-client.ps1',
             '.\app\session-host.ps1',
@@ -130,7 +129,6 @@ jobs:
             foreach ($required in @(
               'agent-ssh.exe',
               'agent-ssh.ps1',
-              'ssh.ps1',
               'VERSION',
               'app/session-client.ps1',
               'app/session-host.ps1',
@@ -153,9 +151,6 @@ jobs:
             }
             if ($entries -contains 'agent-ssh.bat') {
               throw 'Portable package still contains the retired BAT launcher.'
-            }
-            if ($entries | Where-Object { $_ -match 'SSH-SPACE|ssh-space' }) {
-              throw 'Portable package still contains a legacy branded path.'
             }
           } finally {
             $archive.Dispose()
@@ -182,11 +177,13 @@ jobs:
           if (Test-Path -LiteralPath (Join-Path $installRoot 'config\servers.local.json')) {
             throw 'Installer unexpectedly created a local server configuration.'
           }
-          if ($env:APP_VERSION -eq '2.3.0') {
-            $legacySetup = Resolve-Path ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
-            $newHash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-            $legacyHash = (Get-FileHash -LiteralPath $legacySetup -Algorithm SHA256).Hash
-            if ($newHash -cne $legacyHash) { throw 'Legacy update alias differs from the agent-ssh installer.' }
+          if (-not (Test-Path -LiteralPath (Join-Path $installRoot '.agent-ssh-installed') -PathType Leaf)) {
+            throw 'Installed-mode marker was not created.'
+          }
+          foreach ($privateDirectory in @('keys', 'data', 'exports', 'backups')) {
+            if (Test-Path -LiteralPath (Join-Path $installRoot $privateDirectory)) {
+              throw "Installer placed user data directory inside Program Files: $privateDirectory"
+            }
           }
 
           $uninstaller = Join-Path $installRoot 'unins000.exe'
@@ -202,7 +199,6 @@ jobs:
           path: |
             dist/agent-ssh-${{ env.APP_VERSION }}-Setup.exe
             dist/agent-ssh-${{ env.APP_VERSION }}-Portable.zip
-            dist/SSH-Space-${{ env.APP_VERSION }}-Setup.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
@@ -219,8 +215,6 @@ jobs:
             ".\dist\agent-ssh-$env:APP_VERSION-Portable.zip",
             '.\dist\SHA256SUMS.txt'
           )
-          $legacySetup = ".\dist\SSH-Space-$env:APP_VERSION-Setup.exe"
-          if (Test-Path -LiteralPath $legacySetup) { $files += $legacySetup }
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
             Accept = 'application/vnd.github+json'

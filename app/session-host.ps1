@@ -17,7 +17,7 @@ $script:ShutdownRequested = $false
 $script:SessionFingerprintKey = New-Object byte[] 32
 $fingerprintRng = [Security.Cryptography.RandomNumberGenerator]::Create()
 try { $fingerprintRng.GetBytes($script:SessionFingerprintKey) } finally { $fingerprintRng.Dispose() }
-$descriptorPath = Join-Path $Root 'data\session-host.json'
+$descriptorPath = Join-Path $RuntimeDataRoot 'session-host.json'
 
 function New-SessionToken {
     $bytes = New-Object byte[] 32
@@ -289,7 +289,7 @@ function Read-SessionRequestJson {
     return $text | ConvertFrom-Json
 }
 
-$rootBytes = [Text.Encoding]::UTF8.GetBytes(([IO.Path]::GetFullPath($Root)).ToLowerInvariant())
+$rootBytes = [Text.Encoding]::UTF8.GetBytes($DataRoot.ToLowerInvariant())
 $sha256 = [Security.Cryptography.SHA256]::Create()
 try { $rootHash = ([BitConverter]::ToString($sha256.ComputeHash($rootBytes))).Replace('-', '').Substring(0, 20) } finally { $sha256.Dispose() }
 $createdNew = $false
@@ -314,7 +314,7 @@ while ($selectedPort -le [Math]::Min(65535, $Port + 20)) {
 if ($null -eq $listener -or -not $listener.IsListening) { $hostMutex.ReleaseMutex(); $hostMutex.Dispose(); throw 'Could not start the local SSH session host.' }
 
 New-Item -ItemType Directory -Path (Split-Path -Parent $descriptorPath) -Force | Out-Null
-$descriptor = [ordered]@{ pid = $PID; port = $selectedPort; token = $apiToken; root = [IO.Path]::GetFullPath($Root); startedAt = [DateTime]::UtcNow.ToString('o') }
+$descriptor = [ordered]@{ pid = $PID; port = $selectedPort; token = $apiToken; root = $WorkspaceRoot; dataRoot = $DataRoot; startedAt = [DateTime]::UtcNow.ToString('o') }
 [IO.File]::WriteAllText($descriptorPath, ($descriptor | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false)))
 
 try {

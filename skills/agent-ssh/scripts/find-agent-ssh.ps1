@@ -14,7 +14,6 @@ function Add-Candidate {
 }
 
 Add-Candidate $env:AGENT_SSH_HOME
-Add-Candidate $env:SSH_SPACE_HOME
 
 $current = if (Test-Path -LiteralPath $StartPath -PathType Leaf) {
     Split-Path -Parent ([IO.Path]::GetFullPath($StartPath))
@@ -32,16 +31,14 @@ $skillRoot = Split-Path -Parent $PSScriptRoot
 $packagedRoot = Split-Path -Parent (Split-Path -Parent $skillRoot)
 Add-Candidate $packagedRoot
 Add-Candidate (Join-Path $env:LOCALAPPDATA 'Programs\agent-ssh')
-Add-Candidate (Join-Path $env:LOCALAPPDATA 'Programs\SSH Space')
 
 $uninstallRoots = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -eq 'agent-ssh' -or $_.DisplayName -like 'SSH Space*' } |
+    Where-Object { $_.DisplayName -eq 'agent-ssh' } |
     ForEach-Object { $_.InstallLocation }
 foreach ($root in $uninstallRoots) { Add-Candidate $root }
 
 foreach ($candidate in $candidates | Select-Object -Unique) {
-    $hasCli = (Test-Path -LiteralPath (Join-Path $candidate 'agent-ssh.ps1') -PathType Leaf) -or
-        (Test-Path -LiteralPath (Join-Path $candidate 'ssh.ps1') -PathType Leaf)
+    $hasCli = Test-Path -LiteralPath (Join-Path $candidate 'agent-ssh.ps1') -PathType Leaf
     if ($hasCli -and
         (Test-Path -LiteralPath (Join-Path $candidate 'app\server.ps1') -PathType Leaf)) {
         Write-Output $candidate

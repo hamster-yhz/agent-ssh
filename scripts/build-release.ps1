@@ -41,7 +41,6 @@ New-Item -ItemType Directory -Path $stage, $dist -Force | Out-Null
 
 Copy-Item -LiteralPath $releaseExecutable -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'agent-ssh.ps1') -Destination $stage
-Copy-Item -LiteralPath (Join-Path $root 'ssh.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $stage
 [IO.File]::WriteAllText((Join-Path $stage 'VERSION'), $Version, (New-Object Text.UTF8Encoding($false)))
@@ -65,7 +64,6 @@ if (Test-Path -LiteralPath $portable) { Remove-Item -LiteralPath $portable -Forc
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $portable -CompressionLevel Optimal
 
 $installer = $null
-$legacyInstaller = $null
 if (-not $SkipInstaller) {
     $iscc = @(
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
@@ -78,17 +76,10 @@ if (-not $SkipInstaller) {
     & $iscc "/DSourceDir=$stage" "/DOutputDir=$dist" "/DAppVersion=$Version" (Join-Path $root 'installer\agent-ssh.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed to build the installer.' }
     $installer = Join-Path $dist "agent-ssh-$Version-Setup.exe"
-    if ($Version -eq '2.3.0') {
-        # v2.2.x looks for the former asset name. Publish one transition alias
-        # so those clients can upgrade into the new naming scheme.
-        $legacyInstaller = Join-Path $dist "SSH-Space-$Version-Setup.exe"
-        Copy-Item -LiteralPath $installer -Destination $legacyInstaller -Force
-    }
 }
 
 $artifacts = @($portable)
 if ($installer) { $artifacts += $installer }
-if ($legacyInstaller) { $artifacts += $legacyInstaller }
 $checksums = foreach ($artifact in $artifacts) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact).Hash.ToLowerInvariant()
     "$hash  $([IO.Path]::GetFileName($artifact))"

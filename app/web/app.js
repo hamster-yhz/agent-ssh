@@ -53,7 +53,7 @@ function friendlyError(error) {
     [/unsupported package version/i, '导入包版本不受支持。'],
     [/imported files exceed 10 mb/i, '导入文件总大小不能超过 10 MB。'],
     [/select between 1 and 200 package files/i, '一次请选择 1 到 200 个导入文件。'],
-    [/folder path is outside this workspace/i, '只能打开 agent-ssh 工作区内的目录。'],
+    [/folder path is outside the agent-ssh data directory/i, '只能打开 agent-ssh 用户数据目录内的文件夹。'],
     [/already up to date/i, 'agent-ssh 已经是最新版本。'],
     [/failed sha-256|checksum|sha256sums/i, '更新文件完整性校验失败，安装已取消。'],
     [/latest release|github|update api/i, '暂时无法连接 GitHub 更新服务，请稍后重试。'],

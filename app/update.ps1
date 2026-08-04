@@ -134,7 +134,7 @@ function Save-AgentSshReleasePackage {
     Assert-AgentSshAssetUrl ([string]$Release.setupUrl) $version $setupName
     Assert-AgentSshAssetUrl ([string]$Release.checksumUrl) $version $checksumName
 
-    $directory = Join-Path $Root "data\updates\$version"
+    $directory = Join-Path $RuntimeDataRoot "updates\$version"
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     $setupPath = Join-Path $directory $setupName
     $checksumPath = Join-Path $directory $checksumName
@@ -199,7 +199,7 @@ function Get-VerifiedAgentSshUpdatePackage {
     param([Parameter(Mandatory)][string]$Version)
     $release = Get-AgentSshLatestRelease
     if ($release.version -cne $Version) { throw 'The requested update is no longer the latest release.' }
-    $directory = Join-Path $Root "data\updates\$Version"
+    $directory = Join-Path $RuntimeDataRoot "updates\$Version"
     $setupPath = Join-Path $directory ([string]$release.setupName)
     $checksumPath = Join-Path $directory ([string]$release.checksumName)
     if (-not (Test-Path -LiteralPath $setupPath -PathType Leaf) -or -not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) {

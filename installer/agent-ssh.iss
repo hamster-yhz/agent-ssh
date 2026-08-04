@@ -15,7 +15,7 @@ AppVersion={#AppVersion}
 AppPublisher=agent-ssh
 DefaultDirName={localappdata}\Programs\agent-ssh
 DefaultGroupName=agent-ssh
-UsePreviousAppDir=yes
+UsePreviousAppDir=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -38,13 +38,11 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "codexskill"; Description: "Install the agent-ssh Skill for Codex"; GroupDescription: "Agent integration:"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "keys\*,data\*,exports\*,backups\*"; Flags: ignoreversion recursesubdirs
 Source: "{#SourceDir}\skills\agent-ssh\*"; DestDir: "{%USERPROFILE}\.codex\skills\agent-ssh"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: codexskill
 
-[InstallDelete]
-Type: files; Name: "{app}\SSH Space.exe"
-Type: files; Name: "{autoprograms}\SSH Space.lnk"
-Type: files; Name: "{autodesktop}\SSH Space.lnk"
+[UninstallDelete]
+Type: files; Name: "{app}\.agent-ssh-installed"
 
 [Icons]
 Name: "{autoprograms}\agent-ssh"; Filename: "{app}\agent-ssh.exe"; WorkingDir: "{app}"
@@ -54,28 +52,8 @@ Name: "{autodesktop}\agent-ssh"; Filename: "{app}\agent-ssh.exe"; WorkingDir: "{
 Filename: "{app}\agent-ssh.exe"; Description: "Launch agent-ssh"; Flags: nowait postinstall skipifsilent
 
 [Code]
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  LegacySkill: String;
-  BackupRoot: String;
-  BackupPath: String;
+procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  Result := '';
-  if not WizardIsTaskSelected('codexskill') then
-    exit;
-
-  LegacySkill := ExpandConstant('{%USERPROFILE}\.codex\skills\ssh-space');
-  if not DirExists(LegacySkill) then
-    exit;
-
-  BackupRoot := ExpandConstant('{%USERPROFILE}\.codex\skill-backups');
-  if not ForceDirectories(BackupRoot) then
-  begin
-    Result := 'Could not create the Codex Skill backup directory.';
-    exit;
-  end;
-
-  BackupPath := BackupRoot + '\ssh-space_' + GetDateTimeString('yyyymmdd_hhnnss', '', '');
-  if not RenameFile(LegacySkill, BackupPath) then
-    Result := 'Could not archive the legacy Codex Skill. Close Codex and try again.';
+  if CurStep = ssPostInstall then
+    SaveStringToFile(ExpandConstant('{app}\.agent-ssh-installed'), 'installed', False);
 end;

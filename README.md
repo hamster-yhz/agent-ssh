@@ -73,9 +73,9 @@ agent-ssh 会在启动后静默检查 GitHub 的最新稳定 Release，也可以
 4. 只有校验成功后才启用“立即安装”。
 5. 经用户再次确认后启动标准安装器，关闭当前应用并在更新完成后重新打开。
 
-更新器只接受更高的三段式稳定版本，不会自动降级，也不会静默强制安装。下载文件缓存在 `data\updates\版本号`；手动从 GitHub Release 下载始终可以作为兜底。便携版使用应用内更新时会启动标准用户安装程序。
+更新器只接受更高的三段式稳定版本，不会自动降级，也不会静默强制安装。安装版的下载文件缓存在 `%LOCALAPPDATA%\agent-ssh\data\updates\版本号`；手动从 GitHub Release 下载始终可以作为兜底。便携版使用应用内更新时会启动标准用户安装程序。
 
-原位升级只替换随安装包发布的程序文件，不会覆盖 `config\servers.local.json`、`keys\`、`data\`、`exports\` 或 `backups\` 中的本地用户数据。
+安装版更新只替换 `%LOCALAPPDATA%\Programs\agent-ssh` 中的程序文件，用户配置、密钥和运行数据独立保存在 `%LOCALAPPDATA%\agent-ssh`，不会被安装或卸载覆盖。便携版的数据仍保存在解压目录旁。
 
 ## 桌面应用里可以做什么？
 
@@ -107,8 +107,6 @@ agent-ssh 会在启动后静默检查 GitHub 的最新稳定 Release，也可以
 ## 命令行与 Agent
 
 桌面应用适合日常管理，`agent-ssh.ps1` 适合自动化和本地 Agent。两者使用同一份服务器配置。
-
-从旧版本升级时，原来的 `ssh.ps1` 会保留为兼容转发入口；新脚本和 Agent 应统一调用 `agent-ssh.ps1`。
 
 ```powershell
 # 查看别名和检查配置，不连接服务器
@@ -153,11 +151,14 @@ Skill 位于 `%USERPROFILE%\.codex\skills\agent-ssh`。Agent 通过公开的 CLI
 
 ## 配置与认证
 
-普通用户建议直接在桌面应用中维护配置，不需要手写 JSON。配置保存在：
+普通用户建议直接在桌面应用中维护配置，不需要手写 JSON。安装版和便携版使用不同的数据位置：
 
 ```text
-config\servers.local.json
+安装版：%LOCALAPPDATA%\agent-ssh\config\servers.local.json
+便携版：<解压目录>\config\servers.local.json
 ```
+
+同一数据根目录下还包含 `keys`、`data`、`exports` 和 `backups`。程序文件与用户数据彻底分离。
 
 配置格式示例：
 
@@ -194,12 +195,14 @@ $env:AGENT_SSH_CONFIG = 'D:\private\my-servers.json'
 & '.\agent-ssh.exe'
 ```
 
+如需整体指定数据目录，可在启动前设置 `AGENT_SSH_DATA_HOME`；这会同时改变配置、密钥、运行数据、导出和备份的位置。
+
 ## 安全与隐私
 
 - 正式发布包不包含开发者的服务器配置、密码、密钥、导出包或备份。
 - 密码不会出现在 `ssh.exe` 命令行参数中，而是通过临时 `SSH_ASKPASS` 环境交给 OpenSSH。
 - `known_hosts` 独立保存在 agent-ssh 数据目录中。
-- `config/servers.local.json`、`keys/`、`data/`、`exports/` 和 `backups/` 已被 Git 忽略。
+- 便携/源码目录中的 `config/servers.local.json`、`keys/`、`data/`、`exports/` 和 `backups/` 已被 Git 忽略。
 - 桌面内部 API 仅绑定回环地址，并使用每次启动随机生成的令牌。
 - 恢复出厂设置前会移动现有配置、密钥和 `known_hosts` 到备份目录。
 
@@ -216,6 +219,7 @@ RESET agent-ssh
 安装版是标准的 Windows 按用户安装程序：
 
 - 默认安装到 `%LOCALAPPDATA%\Programs\agent-ssh`。
+- 将用户配置、密钥、会话数据、导出包和备份保存在 `%LOCALAPPDATA%\agent-ssh`。
 - 在当前用户的程序卸载列表中登记 agent-ssh。
 - 创建开始菜单入口，可选创建桌面快捷方式。
 - 可选安装 Codex Skill 到用户目录。
@@ -223,7 +227,7 @@ RESET agent-ssh
 
 它不会安装 Windows 服务、驱动、计划任务，不会修改防火墙，也不会替换系统 OpenSSH 或强制写入 `PATH`。便携版则不会写入程序卸载列表。
 
-从 `2.2.x` 升级会沿用原安装位置，以确保安装目录内已有的服务器配置、密钥和备份不被移动或丢失；应用名称、EXE、快捷方式和卸载项会更新为 `agent-ssh`。全新安装使用 `%LOCALAPPDATA%\Programs\agent-ssh`。
+安装目录只放程序文件，卸载程序默认不删除 `%LOCALAPPDATA%\agent-ssh` 中的用户数据。便携版仍把程序和数据放在同一个解压目录，适合 U 盘或免安装使用。
 
 ## 常见问题
 
@@ -257,7 +261,7 @@ RESET agent-ssh
 <details>
 <summary><strong>手工把配置文件改坏了怎么办？</strong></summary>
 
-agent-ssh 会停止使用损坏配置并显示 JSON 错误，不会拿错误内容继续连接。正常保存前还会在 `backups\auto-save_*` 创建快照，可用于人工恢复。
+agent-ssh 会停止使用损坏配置并显示 JSON 错误，不会拿错误内容继续连接。正常保存前还会在数据目录的 `backups\auto-save_*` 创建快照，可用于人工恢复。
 
 </details>
 
@@ -295,21 +299,21 @@ agent-ssh 会停止使用损坏配置并显示 JSON 错误，不会拿错误内�
 - Actions 页面手动运行：生成可下载的工作流产物。
 
 ```powershell
-git tag v2.3.0
+git tag v2.4.0
 git push origin main --tags
 ```
 
 ## 项目结构
 
 ```text
-agent-ssh.exe                  桌面应用入口
-agent-ssh.ps1                        用户与 Agent 的 CLI
+agent-ssh.exe                   桌面应用入口
+agent-ssh.ps1                  用户与 Agent 的 CLI
 app/                           本地服务、持久会话宿主与桌面界面
 src/desktop/                   WinForms / WebView2 宿主源码
 scripts/                       构建和安装脚本
 skills/agent-ssh/              Codex Skill
-config/ keys/ data/            本地配置、密钥和运行数据
-exports/ backups/              敏感导出包与恢复备份
+config/ keys/ data/            便携/源码模式的本地数据
+exports/ backups/              便携/源码模式的敏感数据
 ```
 
 第三方组件与许可证信息见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

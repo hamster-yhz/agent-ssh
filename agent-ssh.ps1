@@ -10,20 +10,31 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$WorkspaceRoot = $PSScriptRoot
+$WorkspaceRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$InstalledMarkerPath = Join-Path $WorkspaceRoot '.agent-ssh-installed'
+$DataRoot = if ($env:AGENT_SSH_DATA_HOME) {
+    [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($env:AGENT_SSH_DATA_HOME))
+} elseif (Test-Path -LiteralPath $InstalledMarkerPath -PathType Leaf) {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        throw 'LOCALAPPDATA is unavailable; agent-ssh cannot locate its installed user data.'
+    }
+    [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'agent-ssh'))
+} else {
+    $WorkspaceRoot
+}
 $ConfigPath = if ($env:AGENT_SSH_CONFIG) {
     [System.IO.Path]::GetFullPath($env:AGENT_SSH_CONFIG)
-} elseif ($env:SSH_SPACE_CONFIG) {
-    # Preserve custom config locations set by releases before v2.3.0.
-    [System.IO.Path]::GetFullPath($env:SSH_SPACE_CONFIG)
 } else {
-    Join-Path $WorkspaceRoot 'config\servers.local.json'
+    Join-Path $DataRoot 'config\servers.local.json'
 }
 $ExampleConfigPath = Join-Path $WorkspaceRoot 'config\servers.example.json'
-$KnownHostsPath = Join-Path $WorkspaceRoot 'data\known_hosts'
+$KeysRoot = Join-Path $DataRoot 'keys'
+$RuntimeDataRoot = Join-Path $DataRoot 'data'
+$ExportsRoot = Join-Path $DataRoot 'exports'
+$KnownHostsPath = Join-Path $RuntimeDataRoot 'known_hosts'
 $AskPassSourcePath = Join-Path $WorkspaceRoot 'app\helpers\AgentSsh.AskPass.cs'
-$AskPassExePath = Join-Path $WorkspaceRoot 'data\agent-ssh-askpass.exe'
-$BackupRoot = Join-Path $WorkspaceRoot 'backups'
+$AskPassExePath = Join-Path $RuntimeDataRoot 'agent-ssh-askpass.exe'
+$BackupRoot = Join-Path $DataRoot 'backups'
 $BundledOpenSshRoot = Join-Path $WorkspaceRoot 'runtime\openssh'
 
 function Show-Usage {
@@ -126,7 +137,7 @@ function Get-ServerEntry {
     return $entry
 }
 
-function Resolve-WorkspacePath {
+function Resolve-AgentSshDataPath {
     param([Parameter(Mandatory)][string]$Path)
 
     $expandedPath = [Environment]::ExpandEnvironmentVariables($Path)
@@ -134,7 +145,17 @@ function Resolve-WorkspacePath {
         return [System.IO.Path]::GetFullPath($expandedPath)
     }
 
-    return [System.IO.Path]::GetFullPath((Join-Path $WorkspaceRoot $expandedPath))
+    return [System.IO.Path]::GetFullPath((Join-Path $DataRoot $expandedPath))
+}
+
+function Resolve-AgentSshUserPath {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $expandedPath = [Environment]::ExpandEnvironmentVariables($Path)
+    if ([System.IO.Path]::IsPathRooted($expandedPath)) {
+        return [System.IO.Path]::GetFullPath($expandedPath)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $expandedPath))
 }
 
 function Get-ServerSettings {
@@ -185,7 +206,7 @@ function Get-ServerSettings {
 
     $resolvedIdentityFile = ''
     if (-not [string]::IsNullOrWhiteSpace($identityFile)) {
-        $resolvedIdentityFile = Resolve-WorkspacePath $identityFile
+        $resolvedIdentityFile = Resolve-AgentSshDataPath $identityFile
         if (-not (Test-Path -LiteralPath $resolvedIdentityFile -PathType Leaf)) {
             throw "Server '$($Entry.Name)' key file does not exist: $resolvedIdentityFile"
         }
@@ -306,17 +327,25 @@ function New-SshArguments {
 }
 
 function Ensure-AskPassExecutable {
-    if (Test-Path -LiteralPath $AskPassExePath -PathType Leaf) {
-        return
-    }
-
     if (-not (Test-Path -LiteralPath $AskPassSourcePath -PathType Leaf)) {
         throw "Password helper source is missing: $AskPassSourcePath"
     }
 
+    if (Test-Path -LiteralPath $AskPassExePath -PathType Leaf) {
+        $helperTime = (Get-Item -LiteralPath $AskPassExePath).LastWriteTimeUtc
+        $sourceTime = (Get-Item -LiteralPath $AskPassSourcePath).LastWriteTimeUtc
+        if ($helperTime -ge $sourceTime) { return }
+    }
+
     New-Item -ItemType Directory -Path (Split-Path -Parent $AskPassExePath) -Force | Out-Null
-    $source = Get-Content -LiteralPath $AskPassSourcePath -Raw -Encoding UTF8
-    Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $AskPassExePath -OutputType ConsoleApplication
+    $temporaryPath = "$AskPassExePath.$([Guid]::NewGuid().ToString('N')).tmp.exe"
+    try {
+        $source = Get-Content -LiteralPath $AskPassSourcePath -Raw -Encoding UTF8
+        Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $temporaryPath -OutputType ConsoleApplication
+        Move-Item -LiteralPath $temporaryPath -Destination $AskPassExePath -Force
+    } finally {
+        if (Test-Path -LiteralPath $temporaryPath) { Remove-Item -LiteralPath $temporaryPath -Force }
+    }
 }
 
 function Invoke-SshConnection {
@@ -458,8 +487,7 @@ function Reset-AgentSshFactoryDefaults {
         Copy-Item -LiteralPath $ConfigPath -Destination (Join-Path $backupDirectory 'servers.local.json')
     }
 
-    $keysRoot = Join-Path $WorkspaceRoot 'keys'
-    $keyItems = @(Get-ChildItem -LiteralPath $keysRoot -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.gitkeep' })
+    $keyItems = @(Get-ChildItem -LiteralPath $KeysRoot -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.gitkeep' })
     if ($keyItems.Count -gt 0) {
         $backupKeys = Join-Path $backupDirectory 'keys'
         New-Item -ItemType Directory -Path $backupKeys -Force | Out-Null
@@ -512,9 +540,9 @@ function Export-SshServerPackages {
 
     if ($Aliases.Count -eq 0) { throw 'No servers were selected for export.' }
     $outputRoot = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-        Join-Path $WorkspaceRoot 'exports'
+        $ExportsRoot
     } else {
-        Resolve-WorkspacePath $OutputDirectory
+        Resolve-AgentSshUserPath $OutputDirectory
     }
     $batchPrefix = if ($Aliases.Count -eq 1) { $Aliases[0] } else { 'batch' }
     $batchDirectory = New-IsolatedDirectory $outputRoot $batchPrefix
@@ -592,7 +620,7 @@ function Import-SshServerPackages {
     $packageFiles = New-Object System.Collections.Generic.List[string]
     $seenFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($inputPath in $Paths) {
-        $resolvedPath = Resolve-WorkspacePath $inputPath
+        $resolvedPath = Resolve-AgentSshUserPath $inputPath
         if (Test-Path -LiteralPath $resolvedPath -PathType Leaf) {
             if ([System.IO.Path]::GetFileName($resolvedPath) -ine 'server.json') {
                 throw "Import file must be named server.json: $resolvedPath"
@@ -641,10 +669,10 @@ function Import-SshServerPackages {
             if (-not (Test-Path -LiteralPath $sourceKey -PathType Leaf)) {
                 throw "Package key file is missing: $sourceKey"
             }
-            $keyDirectory = New-IsolatedDirectory (Join-Path $WorkspaceRoot 'keys\imports') $importAlias
+            $keyDirectory = New-IsolatedDirectory (Join-Path $KeysRoot 'imports') $importAlias
             $destinationKey = Join-Path $keyDirectory (Get-SafeFileName ([System.IO.Path]::GetFileName($sourceKey)))
             Copy-Item -LiteralPath $sourceKey -Destination $destinationKey
-            $relativeKey = $destinationKey.Substring($WorkspaceRoot.TrimEnd('\').Length + 1)
+            $relativeKey = $destinationKey.Substring($DataRoot.TrimEnd('\').Length + 1)
             $importedIdentityFile = $relativeKey -replace '\\', '/'
         }
 

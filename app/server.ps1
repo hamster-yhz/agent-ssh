@@ -80,8 +80,9 @@ function Get-PublicState {
         return [ordered]@{
             servers = @()
             configPath = $ConfigPath
-            workspace = $Root
-            exportsPath = (Join-Path $Root 'exports')
+            workspace = $WorkspaceRoot
+            dataRoot = $DataRoot
+            exportsPath = $ExportsRoot
             configError = $_.Exception.Message
             runtime = [ordered]@{
                 sshAvailable = $runtime.Available
@@ -120,8 +121,9 @@ function Get-PublicState {
     return [ordered]@{
         servers = @($servers)
         configPath = $ConfigPath
-        workspace = $Root
-        exportsPath = (Join-Path $Root 'exports')
+        workspace = $WorkspaceRoot
+        dataRoot = $DataRoot
+        exportsPath = $ExportsRoot
         configError = ''
         runtime = [ordered]@{
             sshAvailable = $runtime.Available
@@ -196,10 +198,10 @@ function Save-UploadedKey {
     $content = [string](Get-ObjectValue $Body 'content' '')
     try { $bytes = [Convert]::FromBase64String($content) } catch { throw 'Key content is not valid base64.' }
     if ($bytes.Length -eq 0 -or $bytes.Length -gt 524288) { throw 'Key file must be between 1 byte and 512 KB.' }
-    $directory = New-IsolatedDirectory (Join-Path $Root 'keys\uploads') $alias
+    $directory = New-IsolatedDirectory (Join-Path $KeysRoot 'uploads') $alias
     $destination = Join-Path $directory $fileName
     [IO.File]::WriteAllBytes($destination, $bytes)
-    $relative = $destination.Substring($Root.TrimEnd('\').Length + 1) -replace '\\', '/'
+    $relative = $destination.Substring($DataRoot.TrimEnd('\').Length + 1) -replace '\\', '/'
     return $relative
 }
 
@@ -207,7 +209,7 @@ function Import-UploadedPackages {
     param([Parameter(Mandatory)][object]$Body)
     $files = @(Get-ObjectValue $Body 'files' @())
     if ($files.Count -eq 0 -or $files.Count -gt 200) { throw 'Select between 1 and 200 package files.' }
-    $stagingRoot = New-IsolatedDirectory (Join-Path $Root 'data\import-staging') 'upload'
+    $stagingRoot = New-IsolatedDirectory (Join-Path $RuntimeDataRoot 'import-staging') 'upload'
     $totalBytes = 0
     try {
         foreach ($file in $files) {
@@ -392,8 +394,8 @@ try {
                 'POST /api/folder/open' {
                     $body = Read-RequestJson $request
                     $targetPath = [IO.Path]::GetFullPath([string](Get-ObjectValue $body 'path' ''))
-                    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
-                    if (-not $targetPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $targetPath)) { throw 'Folder path is outside this workspace.' }
+                    $rootPrefix = $DataRoot.TrimEnd('\') + '\'
+                    if (-not $targetPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $targetPath)) { throw 'Folder path is outside the agent-ssh data directory.' }
                     Start-Process explorer.exe -ArgumentList @($targetPath) | Out-Null
                     Send-Json $context @{ ok = $true }
                 }

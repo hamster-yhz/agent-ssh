@@ -24,10 +24,6 @@ if (-not $runtimeRoot.StartsWith($workspacePrefix, [StringComparison]::OrdinalIg
 
 $sshExe = Join-Path $runtimeRoot 'ssh.exe'
 if ((Test-Path -LiteralPath $sshExe -PathType Leaf) -and -not $Force) {
-    $uppercaseMarker = Join-Path $runtimeRoot 'AGENT-SSH-VERSION.txt'
-    if (Test-Path -LiteralPath $uppercaseMarker -PathType Leaf) { Remove-Item -LiteralPath $uppercaseMarker -Force }
-    $legacyMarker = Join-Path $runtimeRoot 'SSH-SPACE-VERSION.txt'
-    if (Test-Path -LiteralPath $legacyMarker -PathType Leaf) { Remove-Item -LiteralPath $legacyMarker -Force }
     [IO.File]::WriteAllText((Join-Path $runtimeRoot 'agent-ssh-version.txt'), "$version`r`n$sha256`r`n", (New-Object Text.UTF8Encoding($false)))
     Write-Host "OpenSSH runtime is ready: $runtimeRoot" -ForegroundColor Green
     return

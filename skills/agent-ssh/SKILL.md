@@ -14,9 +14,6 @@ Run the bundled locator before operating outside an agent-ssh workspace:
 ```powershell
 $agentSshRoot = & "<skill-directory>\scripts\find-agent-ssh.ps1"
 $agentSshCli = Join-Path $agentSshRoot 'agent-ssh.ps1'
-if (-not (Test-Path -LiteralPath $agentSshCli -PathType Leaf)) {
-    $agentSshCli = Join-Path $agentSshRoot 'ssh.ps1'
-}
 ```
 
 Resolve `<skill-directory>` from this `SKILL.md`. Prefer a workspace found at or above the current directory; otherwise use the per-user installation.
@@ -70,8 +67,8 @@ Treat every export as sensitive because it can contain passwords or private keys
 
 ## Protect secrets and local data
 
-- Never print, copy into chat, or commit `config/servers.local.json`.
-- Never print or copy private keys under `keys/` or generated files under `data/`.
+- Never print, copy into chat, or commit `%LOCALAPPDATA%\agent-ssh\config\servers.local.json` (installed) or `config/servers.local.json` (portable).
+- Never print or copy private keys or generated data from the active data directory.
 - Never place a password directly in a shell command.
 - Prefer key authentication.
 - Use the desktop application for routine configuration editing. Use package import for deterministic Agent-managed additions.

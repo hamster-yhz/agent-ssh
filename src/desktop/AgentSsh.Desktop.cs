@@ -37,9 +37,7 @@ internal static class Program
     {
         ConfigureDpiAwareness();
         bool createdNew;
-        // Retain the original mutex identity so v2.2 and v2.3 cannot run side by side
-        // during an in-place rename upgrade.
-        instanceMutex = new Mutex(true, @"Local\SSHSpaceDesktop", out createdNew);
+        instanceMutex = new Mutex(true, @"Local\AgentSshDesktop", out createdNew);
         if (!createdNew)
         {
             MessageBox.Show("agent-ssh desktop is already running.", "agent-ssh",

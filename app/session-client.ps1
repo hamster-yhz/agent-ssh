@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-$script:AgentSshSessionDescriptorPath = Join-Path $WorkspaceRoot 'data\session-host.json'
+$script:AgentSshSessionDescriptorPath = Join-Path $RuntimeDataRoot 'session-host.json'
 $script:AgentSshSessionHostScript = Join-Path $WorkspaceRoot 'app\session-host.ps1'
 
 function Get-AgentSshSessionDescriptor {
@@ -8,14 +8,16 @@ function Get-AgentSshSessionDescriptor {
     try {
         $descriptor = [IO.File]::ReadAllText($script:AgentSshSessionDescriptorPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
         $root = [IO.Path]::GetFullPath([string](Get-ObjectValue $descriptor 'root' ''))
-        if (-not [string]::Equals($root.TrimEnd('\'), ([IO.Path]::GetFullPath($WorkspaceRoot)).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) { return $null }
+        $dataRoot = [IO.Path]::GetFullPath([string](Get-ObjectValue $descriptor 'dataRoot' ''))
+        if (-not [string]::Equals($root.TrimEnd('\'), $WorkspaceRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) { return $null }
+        if (-not [string]::Equals($dataRoot.TrimEnd('\'), $DataRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) { return $null }
         $port = [int](Get-ObjectValue $descriptor 'port' 0)
         $processId = [int](Get-ObjectValue $descriptor 'pid' 0)
         $token = [string](Get-ObjectValue $descriptor 'token' '')
         if ($port -lt 1024 -or $port -gt 65535 -or $processId -le 0 -or $token -notmatch '^[A-Za-z0-9_-]{32,128}$') { return $null }
         $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if ($null -eq $process -or $process.HasExited) { return $null }
-        return [pscustomobject]@{ Port = $port; Pid = $processId; Token = $token; Root = $root }
+        return [pscustomobject]@{ Port = $port; Pid = $processId; Token = $token; Root = $root; DataRoot = $dataRoot }
     } catch {
         return $null
     }
