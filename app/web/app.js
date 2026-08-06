@@ -221,22 +221,22 @@ async function loadState(preferredAlias) {
   state.checked = new Set([...state.checked].filter(alias => state.servers.some(server => server.alias === alias)));
   if (preferredAlias && state.servers.some(server => server.alias === preferredAlias)) state.selectedAlias = preferredAlias;
   if (!state.servers.some(server => server.alias === state.selectedAlias)) state.selectedAlias = state.servers[0]?.alias || null;
-  render();
+  render(true);
   refreshSessionStatus(state.selectedAlias);
   if (state.configError) toast(`配置文件损坏：${state.configError}`, 'error');
 }
 
 async function refreshSessionStatus(alias = state.selectedAlias) {
-  if (!alias) { state.session = null; render(); return; }
+  if (!alias) { state.session = null; renderWorkspace(); return; }
   try {
     const result = await api(`/api/session/status?alias=${encodeURIComponent(alias)}`);
     if (state.selectedAlias !== alias) return;
     state.session = result.sessions?.[0] || { alias, state: 'disconnected', idleSeconds: 0, idleTimeoutSeconds: 600 };
-    render();
+    renderWorkspace();
   } catch {
     if (state.selectedAlias === alias) {
       state.session = { alias, state: 'disconnected', idleSeconds: 0, idleTimeoutSeconds: 600 };
-      render();
+      renderWorkspace();
     }
   }
 }
@@ -404,13 +404,17 @@ async function openLatestRelease() {
   } catch (error) { toast(friendlyError(error), 'error'); }
 }
 
-function render() {
-  const filtered = state.servers.filter(server => `${server.alias} ${server.host} ${server.user}`.toLowerCase().includes(state.query.toLowerCase()));
+function renderSelectionSummary() {
   $('#server-count').textContent = state.servers.length;
   $('#selection-count').textContent = `${state.checked.size} 已选择`;
   $('#select-all-button').textContent = state.checked.size === state.servers.length && state.servers.length ? '取消全选' : '全选';
+}
+
+function renderServerList(animate = false) {
+  const filtered = state.servers.filter(server => `${server.alias} ${server.host} ${server.user}`.toLowerCase().includes(state.query.toLowerCase()));
+  renderSelectionSummary();
   $('#server-list').innerHTML = filtered.length ? filtered.map((server, index) => `
-    <button class="server-row ${server.alias === state.selectedAlias ? 'active' : ''} ${server.status === 'invalid' ? 'invalid' : ''}" data-alias="${escapeHtml(server.alias)}" style="animation-delay:${index * 35}ms">
+    <button class="server-row ${animate ? 'entering' : ''} ${server.alias === state.selectedAlias ? 'active' : ''} ${server.status === 'invalid' ? 'invalid' : ''}" data-alias="${escapeHtml(server.alias)}" style="animation-delay:${index * 35}ms">
       <input class="server-check" type="checkbox" ${state.checked.has(server.alias) ? 'checked' : ''} aria-label="选择 ${escapeHtml(server.alias)}">
       <span class="node-avatar">${escapeHtml(initials(server.alias))}</span>
       <span class="server-copy"><strong>${escapeHtml(server.alias)}</strong><span>${escapeHtml(server.user || '—')}@${escapeHtml(server.host || '—')}:${server.port}</span></span>
@@ -422,15 +426,18 @@ function render() {
       if (event.target.matches('.server-check')) return;
       state.selectedAlias = row.dataset.alias;
       state.session = null;
-      render();
+      $$('.server-row').forEach(item => item.classList.toggle('active', item.dataset.alias === state.selectedAlias));
+      renderWorkspace();
       refreshSessionStatus(state.selectedAlias);
     });
     $('.server-check', row).addEventListener('change', event => {
       event.target.checked ? state.checked.add(row.dataset.alias) : state.checked.delete(row.dataset.alias);
-      render();
+      renderSelectionSummary();
     });
   });
+}
 
+function renderWorkspace() {
   const server = state.servers.find(item => item.alias === state.selectedAlias);
   const live = $('.live-indicator');
   const runtimeSource = state.runtime?.source === 'bundled' ? 'BUILT-IN' : 'SYSTEM';
@@ -467,6 +474,11 @@ function render() {
   connectionButton.classList.toggle('connected', connected);
   connectionButton.disabled = state.sessionAction || server.status !== 'ready' || (state.runtime && !state.runtime.sshAvailable);
   $('#open-terminal').disabled = server.status !== 'ready' || (state.runtime && !state.runtime.sshAvailable);
+}
+
+function render(animateList = false) {
+  renderServerList(animateList);
+  renderWorkspace();
 }
 
 function openServerDialog(server) {
@@ -669,10 +681,11 @@ async function runCommand(event) {
 }
 
 function bindEvents() {
-  $('#server-search').addEventListener('input', event => { state.query = event.target.value; render(); });
+  $('#server-search').addEventListener('input', event => { state.query = event.target.value; renderServerList(); });
   $('#select-all-button').addEventListener('click', () => {
     state.checked = state.checked.size === state.servers.length ? new Set() : new Set(state.servers.map(server => server.alias));
-    render();
+    $$('.server-check').forEach(checkbox => { checkbox.checked = state.checked.has(checkbox.closest('.server-row').dataset.alias); });
+    renderSelectionSummary();
   });
   $$('[data-action="new"]').forEach(button => button.addEventListener('click', () => openServerDialog(null)));
   $$('[data-action="import"]').forEach(button => button.addEventListener('click', () => $('#transfer-dialog').showModal()));
@@ -723,7 +736,7 @@ function bindEvents() {
       if (error?.name === 'AbortError') error = new Error('Terminal launch timed out.');
       toast(friendlyError(error), 'error');
     }
-    finally { clearTimeout(timeout); state.openingTerminal = false; setBusy(event.currentTarget, false); render(); }
+    finally { clearTimeout(timeout); state.openingTerminal = false; setBusy(event.currentTarget, false); renderWorkspace(); }
   });
   $('#delete-server').addEventListener('click', () => {
     if (!state.selectedAlias) return;

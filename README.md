@@ -299,7 +299,7 @@ agent-ssh 会停止使用损坏配置并显示 JSON 错误，不会拿错误内�
 - Actions 页面手动运行：生成可下载的工作流产物。
 
 ```powershell
-git tag v2.4.0
+git tag v2.4.1
 git push origin main --tags
 ```
 
